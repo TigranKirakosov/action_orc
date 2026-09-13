@@ -2,7 +2,7 @@ use std::any::TypeId;
 
 pub trait Marker: Sized + 'static {
     fn meta() -> Meta {
-        Meta::new::<Self>()
+        Meta::of::<Self>()
     }
 }
 
@@ -16,7 +16,7 @@ pub struct Meta {
 }
 
 impl Meta {
-    pub(crate) fn new<T: Marker>() -> Self {
+    pub(crate) fn of<T: Marker>() -> Self {
         Self {
             type_id: TypeId::of::<T>(),
             #[cfg(any(test, feature = "visualizer"))]

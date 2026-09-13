@@ -16,6 +16,7 @@ pub struct Graph {
     pub(crate) meta: Vec<Meta>,
 }
 
+#[derive(Clone)]
 pub struct GraphBounds {
     pub sources: Vec<NodeId>,
     pub sinks: Vec<NodeId>,
@@ -35,7 +36,7 @@ impl Graph {
     }
 
     pub fn add_node<T: Marker>(&mut self) -> NodeId {
-        self.meta.push(Meta::new::<T>());
+        self.meta.push(Meta::of::<T>());
         self.adj.push(vec![]);
         self.in_degree.push(0);
 

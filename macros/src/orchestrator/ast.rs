@@ -21,7 +21,7 @@ pub(super) struct Graph {
 #[derive(Debug, PartialEq)]
 pub(super) enum NodeExpr {
     /// A local variable declaration
-    Declaration(Task),
+    Declaration(Declartaion),
 
     /// A bound node identifier reference, e.g. [in]
     Binding(Ident),
@@ -33,10 +33,10 @@ pub(super) enum NodeExpr {
     Group(GroupBlock),
 }
 
-/// Local task declaration signature
+/// Local declaration signature
 /// Either full match `var: typ` (`a: TaskA`) or type only (`TaskA`)
 #[derive(PartialEq)]
-pub(super) struct Task {
+pub(super) struct Declartaion {
     pub(super) var: Option<Ident>,
     pub(super) typ: Type,
 }
@@ -56,7 +56,7 @@ pub(super) enum SchedulingMode {
     Parallel,
 }
 
-impl std::fmt::Debug for Task {
+impl std::fmt::Debug for Declartaion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let type_string = format_type(&self.typ);
 

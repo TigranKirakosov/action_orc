@@ -1,8 +1,11 @@
+use std::collections::HashMap;
+
 use crate::{Graph, GraphBounds, GraphEntry, Meta, NodeId};
 
 pub struct GraphBuilder {
     pub(crate) meta: Vec<Meta>,
     pub(crate) edges: Vec<(NodeId, NodeId)>,
+    pub(crate) graph_cache: HashMap<*const Graph, GraphBounds>,
 }
 
 impl<'a> GraphBuilder {
@@ -10,6 +13,7 @@ impl<'a> GraphBuilder {
         Self {
             meta: Vec::new(),
             edges: Vec::new(),
+            graph_cache: HashMap::new(),
         }
     }
 
@@ -25,7 +29,18 @@ impl<'a> GraphBuilder {
                     sinks: vec![node_id],
                 }
             }
-            GraphEntry::Graph(sub_graph) => self.merge_layout(sub_graph),
+            GraphEntry::OwnedGraph(sub_graph) => self.merge_layout(&sub_graph),
+            GraphEntry::BorrowedGraph(sub_graph) => {
+                let ptr = sub_graph as *const Graph;
+                if let Some(cached_bounds) = self.graph_cache.get(&ptr) {
+                    return cached_bounds.clone();
+                }
+
+                let bounds = self.merge_layout(sub_graph);
+                self.graph_cache.insert(ptr, bounds.clone());
+
+                bounds
+            }
         }
     }
 

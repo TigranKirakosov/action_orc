@@ -4,14 +4,19 @@ use crate::{Graph, Marker, Meta};
 
 pub enum GraphEntry<'a> {
     Node(Meta),
-    Graph(&'a Graph),
+    BorrowedGraph(&'a Graph),
+    OwnedGraph(Graph),
 }
 
 pub trait AsGraphEntry<'a> {
     fn as_entry(this: Self) -> GraphEntry<'a>;
 }
 
-pub struct Tag<T>(PhantomData<T>);
+pub trait AsGraphEntryProxy<'a> {
+    fn as_entry_proxy(self) -> GraphEntry<'a>;
+}
+
+pub struct Tag<T>(pub PhantomData<T>);
 
 impl<'a, T: Marker> AsGraphEntry<'a> for Tag<T> {
     fn as_entry(_this: Self) -> GraphEntry<'a> {
@@ -21,6 +26,12 @@ impl<'a, T: Marker> AsGraphEntry<'a> for Tag<T> {
 
 impl<'a> AsGraphEntry<'a> for &'a Graph {
     fn as_entry(this: Self) -> GraphEntry<'a> {
-        GraphEntry::Graph(this)
+        GraphEntry::BorrowedGraph(this)
+    }
+}
+
+impl<'a> AsGraphEntry<'a> for Graph {
+    fn as_entry(this: Self) -> GraphEntry<'a> {
+        GraphEntry::OwnedGraph(this)
     }
 }

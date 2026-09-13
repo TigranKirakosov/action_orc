@@ -95,18 +95,18 @@ fn decl<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>
         }
     }
 
-    let task = alt((
+    let declaration = alt((
         // var: scenario::Entering<Dungeon>
-        (ident, punct(':'), type_path).map(|(var, _, typ)| Task {
+        (ident, punct(':'), type_path).map(|(var, _, typ)| Declartaion {
             var: Some(var),
             typ,
         }),
         // scenario::Entering<Dungeon>
-        type_path.map(|typ| Task { var: None, typ }),
+        type_path.map(|typ| Declartaion { var: None, typ }),
     ))
     .parse_next(input)?;
 
-    Ok(NodeExpr::Declaration(task))
+    Ok(NodeExpr::Declaration(declaration))
 }
 
 /// [var]

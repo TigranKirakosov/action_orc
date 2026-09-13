@@ -5,13 +5,12 @@ use std::collections::{HashMap, HashSet};
 use syn::{Ident, spanned::Spanned};
 
 use super::{
-    ast::{self, GroupBlock, NodeExpr, SchedulingMode, Task},
+    ast::{self, Declartaion, GroupBlock, NodeExpr, SchedulingMode},
     format_type,
 };
 
 #[derive(Default)]
 struct Context {
-    graph_ident: GraphIdent,
     compile_graph: action_orc_core::Graph,
     decls: Vec<TokenStream2>,
     links: Vec<TokenStream2>,
@@ -41,20 +40,10 @@ pub(super) enum CodegenError {
     Syn(syn::Error),
 }
 
-enum NodeBound {
-    /// Source or sink of currently building graph node
-    Literal(Vec<Ident>),
-    /// Embedded #[graph]
-    Graph(Ident),
-    /// Synthetic runtime vec reference, built like `let mut #group_0_sink = vec![...];`
-    ParallelGroup(Ident),
-}
-
 struct IdFactory;
 struct DummyMarker;
-struct GraphIdent(Ident);
-struct Source(NodeBound);
-struct Sink(NodeBound);
+struct Source(Ident);
+struct Sink(Ident);
 
 type TypeStr = String;
 
@@ -66,7 +55,6 @@ pub(super) fn generate(ast: ast::SyntaxTree) -> TokenStream {
     }
 
     let Context {
-        graph_ident: GraphIdent(graph),
         decls,
         links,
         errors,
@@ -85,11 +73,11 @@ pub(super) fn generate(ast: ast::SyntaxTree) -> TokenStream {
 
     let out_stream = quote! {
        {
-            let mut #graph = Graph::new();
+            let mut builder = GraphBuilder::new();
             #(#decls)*
             #(#links)*
             #(#compile_errors)*
-            #graph
+            builder.build()
        }
     };
 
@@ -99,22 +87,6 @@ pub(super) fn generate(ast: ast::SyntaxTree) -> TokenStream {
 impl Context {
     fn process_graph(&mut self, graph: ast::Graph) -> (Source, Sink) {
         let (source, mut prev_sink) = self.process_node(graph.entry);
-
-        // Edge case: graph starts with embedded sub-graph:
-        // #[sub] -> (...)
-        // Immediately merge it with master graph, storing its shifted endpoints
-        if let NodeBound::Graph(sub) = &source.0
-            && !self.embeddings.contains(sub)
-        {
-            self.embeddings.insert(sub.clone());
-            let GraphIdent(graph) = &self.graph_ident;
-            let (sub_source, sub_sink) = IdFactory::graph_bounds(sub);
-            self.links.push(quote! {
-                let merged = #graph.merge(&#sub, vec![]);
-                let #sub_source = merged.sources;
-                let #sub_sink = merged.sinks;
-            });
-        }
 
         for conn in graph.conns {
             let node_span = match &conn {
@@ -130,9 +102,14 @@ impl Context {
 
             let (sub_source, sub_sink) = self.process_node(conn);
             self.track_edge(node_span, &prev_sink, &sub_source);
-            self.stitch_nodes(&prev_sink, &sub_source);
 
-            prev_sink = sub_sink
+            let prev_sink_ident = &prev_sink.0;
+            let sub_source_ident = &sub_source.0;
+            self.links.push(quote! {
+                builder.connect(&#prev_sink_ident, &#sub_source_ident);
+            });
+
+            prev_sink = sub_sink;
         }
 
         (source, prev_sink)
@@ -140,9 +117,9 @@ impl Context {
 
     fn process_node(&mut self, node: NodeExpr) -> (Source, Sink) {
         match node {
-            NodeExpr::Declaration(task) => NodeBound::literal(self.declare(task)),
-            NodeExpr::Binding(var) => NodeBound::literal(var),
-            NodeExpr::Embedding(emb) => self.process_embedding(emb),
+            NodeExpr::Declaration(task) => self.process_declaration(task),
+            NodeExpr::Binding(binding) => self.process_binding(binding),
+            NodeExpr::Embedding(embedding) => self.process_embedding(embedding),
             NodeExpr::Group(group) => self.process_group(group),
         }
     }
@@ -161,50 +138,33 @@ impl Context {
                 });
 
                 for graph in graphs {
-                    let (Source(source), Sink(sink)) = self.process_graph(graph);
-                    match source {
-                        NodeBound::Literal(ids) => {
-                            self.links.push(quote! {
-                                #group_source.extend(vec![#(#ids),*]);
-                            });
-                        }
-                        NodeBound::Graph(sub) => {
-                            let (sub_source, _) = IdFactory::graph_bounds(&sub);
-                            self.links.push(quote! {
-                                #group_source.extend(#sub_source);
-                            });
-                        }
-                        NodeBound::ParallelGroup(group) => {
-                            self.links.push(quote! {
-                                #group_source.extend(#group);
-                            });
-                        }
-                    }
+                    let (Source(sub_source), Sink(sub_sink)) = self.process_graph(graph);
 
-                    match sink {
-                        NodeBound::Literal(ids) => {
-                            self.links.push(quote! {
-                                #group_sink.extend(vec![#(#ids),*]);
-                            });
-                        }
-                        NodeBound::Graph(sub) => {
-                            let (_, sub_sink) = IdFactory::graph_bounds(&sub);
-                            self.links.push(quote! {
-                                #group_sink.extend(#sub_sink);
-                            });
-                        }
-                        NodeBound::ParallelGroup(group) => {
-                            self.links.push(quote! {
-                                #group_sink.extend(#group);
-                            });
-                        }
-                    }
+                    self.links.push(quote! {
+                        #group_source.extend(&#sub_source.sources);
+                        #group_sink.extend(&#sub_sink.sinks);
+                    });
                 }
 
-                (
-                    Source(NodeBound::ParallelGroup(group_source)),
-                    Sink(NodeBound::ParallelGroup(group_sink)),
-                )
+                let (aggregated_source, aggregated_sink) =
+                    IdFactory::aggregate_group_bounds(group_id);
+
+                self.links.push(quote! {
+                    let #aggregated_source = GraphBounds { sources: #group_source, sinks: vec![] };
+                    let #aggregated_sink = GraphBounds { sources: vec![], sinks: #group_sink };
+                });
+
+                let src_node_id = self.compile_graph.add_node::<DummyMarker>();
+                self.node_id_map
+                    .insert(aggregated_source.clone(), src_node_id);
+
+                let snk_node_id = self.compile_graph.add_node::<DummyMarker>();
+                self.node_id_map
+                    .insert(aggregated_sink.clone(), snk_node_id);
+
+                self.compile_graph.add_edge(src_node_id, snk_node_id);
+
+                (Source(aggregated_source), Sink(aggregated_sink))
             }
             SchedulingMode::Sequence => {
                 let mut graphs = graphs.into_iter();
@@ -213,10 +173,16 @@ impl Context {
                 for graph in graphs {
                     let span = graph.span_info.span;
                     let (sub_source, sub_sink) = self.process_graph(graph);
-                    self.track_edge(span, &prev_sink, &sub_source);
-                    self.stitch_nodes(&prev_sink, &sub_source);
 
-                    prev_sink = sub_sink
+                    self.track_edge(span, &prev_sink, &sub_source);
+
+                    let prev_sink_ident = &prev_sink.0;
+                    let sub_source_ident = &sub_source.0;
+                    self.links.push(quote! {
+                        builder.connect(&#prev_sink_ident, &#sub_source_ident);
+                    });
+
+                    prev_sink = sub_sink;
                 }
 
                 (source, prev_sink)
@@ -224,116 +190,8 @@ impl Context {
         }
     }
 
-    fn stitch_nodes(&mut self, Sink(upstream): &Sink, Source(downstream): &Source) {
-        let GraphIdent(graph) = &self.graph_ident;
-
-        match (upstream, downstream) {
-            // (A | B) -> (C | D)
-            (NodeBound::Literal(from), NodeBound::Literal(to)) => {
-                for f in from {
-                    for t in to {
-                        self.links.push(quote! {
-                            #graph.add_edge(#f, #t);
-                        });
-                    }
-                }
-            }
-
-            // #[G] -> #[H]
-            (NodeBound::Graph(from), NodeBound::Graph(to)) => {
-                let (_, f_sink) = IdFactory::graph_bounds(from);
-                let (t_source, t_sink) = IdFactory::graph_bounds(to);
-                self.embeddings.insert(to.clone());
-                self.links.push(quote! {
-                    let merged = #graph.merge(&#to, #f_sink);
-                    let #t_source = merged.sources;
-                    let #t_sink = merged.sinks;
-                });
-            }
-
-            // (A | B) -> #[H]
-            (NodeBound::Literal(from), NodeBound::Graph(to)) => {
-                let (t_source, t_sink) = IdFactory::graph_bounds(to);
-                self.embeddings.insert(to.clone());
-                self.links.push(quote! {
-                    let merged = #graph.merge(&#to, vec![#(#from),*]);
-                    let #t_source = merged.sources;
-                    let #t_sink = merged.sinks;
-                });
-            }
-
-            // #[G] -> (C | D)
-            (NodeBound::Graph(from), NodeBound::Literal(to)) => {
-                let (_, f_sink) = IdFactory::graph_bounds(from);
-                for t in to {
-                    self.links.push(quote! {
-                        for &f in &#f_sink {
-                            #graph.add_edge(f, #t);
-                        }
-                    });
-                }
-            }
-
-            // ((..) | (..)) -> C
-            (NodeBound::ParallelGroup(from), NodeBound::Literal(to)) => {
-                for to in to {
-                    self.links.push(quote! {
-                        for &from in &#from {
-                            #graph.add_edge(from, #to);
-                        }
-                    });
-                }
-            }
-
-            // C -> ((..) | (..))
-            (NodeBound::Literal(from), NodeBound::ParallelGroup(to)) => {
-                for f in from {
-                    self.links.push(quote! {
-                        for &t in &#to {
-                            #graph.add_edge(#f, t);
-                        }
-                    });
-                }
-            }
-
-            // ((..) | (..)) -> #[H]
-            (NodeBound::ParallelGroup(from), NodeBound::Graph(to)) => {
-                let (t_source, t_sink) = IdFactory::graph_bounds(to);
-                self.embeddings.insert(to.clone());
-                self.links.push(quote! {
-                    let merged = #graph.merge(&#to, #from.clone());
-                    let #t_source = merged.sources;
-                    let #t_sink = merged.sinks;
-                });
-            }
-
-            // #[G] -> ((..) | (..))
-            (NodeBound::Graph(from), NodeBound::ParallelGroup(to)) => {
-                let (_, f_sink) = IdFactory::graph_bounds(from);
-                self.links.push(quote! {
-                    for &f in &#f_sink {
-                        for &t in &#to {
-                            #graph.add_edge(f, t);
-                        }
-                    }
-                });
-            }
-
-            // ((..) | (..)) -> ((..) | (..))
-            (NodeBound::ParallelGroup(from), NodeBound::ParallelGroup(to)) => {
-                self.links.push(quote! {
-                    for &f in &#from {
-                        for &t in &#to {
-                            #graph.add_edge(f, t);
-                        }
-                    }
-                });
-            }
-        }
-    }
-
-    fn declare(&mut self, Task { var, typ }: Task) -> Ident {
-        let GraphIdent(graph) = &self.graph_ident;
+    fn process_declaration(&mut self, decl: Declartaion) -> (Source, Sink) {
+        let Declartaion { var, typ } = decl;
         let type_key = format_type(&typ);
 
         if var.is_none() {
@@ -346,89 +204,83 @@ impl Context {
             self.unbound_types.insert(type_key.clone());
         }
 
-        let node_ident = var.unwrap_or_else(|| {
+        let bounds_ident = var.unwrap_or_else(|| {
             let anon = IdFactory::anonymous_node(self.anon_id_counter);
             self.anon_map.insert(anon.clone(), type_key);
             self.anon_id_counter += 1;
-
             anon
         });
 
         let decl = quote! {
-            let #node_ident = #graph.add_node::<#typ>();
+            let #bounds_ident = builder.append(
+                AsGraphEntry::as_entry(Tag::<#typ>(std::marker::PhantomData))
+            );
         };
         self.decls.push(decl);
 
         let node_id = self.compile_graph.add_node::<DummyMarker>();
-        if self.node_id_map.contains_key(&node_ident) {
+        if self.node_id_map.contains_key(&bounds_ident) {
             self.errors.push(CodegenError::VariableCollision {
-                var: node_ident.to_string(),
-                span: node_ident.span(),
+                var: bounds_ident.to_string(),
+                span: bounds_ident.span(),
             });
         }
-        self.node_id_map.insert(node_ident.clone(), node_id);
+        self.node_id_map.insert(bounds_ident.clone(), node_id);
 
-        node_ident
+        (Source(bounds_ident.clone()), Sink(bounds_ident))
     }
 
+    fn process_binding(&mut self, binding: Ident) -> (Source, Sink) {
+        (Source(binding.clone()), Sink(binding))
+    }
+
+    /// Processes embedding once to build its bounds.
+    ///
+    /// On subsequent calls just returns stable [Ident] source and sink.
     fn process_embedding(&mut self, embedding: Ident) -> (Source, Sink) {
-        NodeBound::graph(embedding)
+        let bounds_ident = IdFactory::embed_ident(&embedding);
+
+        if !self.embeddings.contains(&embedding) {
+            self.embeddings.insert(embedding.clone());
+
+            let decl = quote! {
+                let #bounds_ident = builder.append(AsGraphEntry::as_entry(#embedding));
+            };
+            let node_id = self.graph_as_node(&embedding);
+
+            self.decls.push(decl);
+            self.anon_map
+                .insert(bounds_ident.clone(), embedding.clone().to_string());
+            self.node_id_map.insert(bounds_ident.clone(), node_id);
+        }
+
+        (Source(bounds_ident.clone()), Sink(bounds_ident))
     }
 
     fn track_edge(&mut self, span: Span, Sink(from): &Sink, Source(to): &Source) {
-        let from_ids: Vec<usize> = match from {
-            NodeBound::Literal(idents) => idents
-                .iter()
-                .map(|id| {
-                    *self
-                        .node_id_map
-                        .get(id)
-                        .expect("Missing source node lookup")
-                })
-                .collect(),
-            NodeBound::Graph(graph) => vec![self.graph_as_node(graph)],
-            NodeBound::ParallelGroup(group) => vec![self.graph_as_node(group)],
-        };
+        let from_id = *self
+            .node_id_map
+            .get(from)
+            .expect("Missing source loop identifier mapping.");
 
-        let to_ids: Vec<usize> = match to {
-            NodeBound::Literal(idents) => idents
-                .iter()
-                .map(|id| {
-                    *self
-                        .node_id_map
-                        .get(id)
-                        .expect("Missing target node lookup")
-                })
-                .collect(),
-            NodeBound::Graph(graph) => vec![self.graph_as_node(graph)],
-            NodeBound::ParallelGroup(group) => vec![self.graph_as_node(group)],
-        };
+        let to_id = *self
+            .node_id_map
+            .get(to)
+            .expect("Missing target loop identifier mapping.");
 
-        for &from_id in &from_ids {
-            for &to_id in &to_ids {
-                self.compile_graph.add_edge(from_id, to_id);
-            }
-        }
+        self.compile_graph.add_edge(from_id, to_id);
 
         if let Err(action_orc_core::GraphError::CycleDetected) = self.compile_graph.sort_ordered() {
-            let from_name = match from {
-                NodeBound::Literal(idents) => idents
-                    .first()
-                    .and_then(|id| self.anon_map.get(id))
-                    .cloned()
-                    .unwrap_or_else(|| "node".to_string()),
-                NodeBound::Graph(graph) => format!("#[{graph}]"),
-                NodeBound::ParallelGroup(group) => format!("(group: {group})"),
-            };
-
-            let to_name = match to {
-                NodeBound::Literal(idents) => idents
-                    .first()
-                    .map(|id| id.to_string())
-                    .unwrap_or_else(|| "node".to_string()),
-                NodeBound::Graph(graph) => format!("#[{graph}]",),
-                NodeBound::ParallelGroup(group) => format!("(group: {group})"),
-            };
+            let from_name = self
+                .anon_map
+                .get(from)
+                .cloned()
+                .unwrap_or_else(|| from.to_string());
+            let to_name = self
+                .anon_map
+                .get(to)
+                .cloned()
+                .unwrap_or_else(|| to.to_string());
 
             self.errors.push(CodegenError::CircularDependency {
                 from: from_name,
@@ -480,33 +332,12 @@ impl From<CodegenError> for syn::Error {
     }
 }
 
-impl NodeBound {
-    fn literal(ident: Ident) -> (Source, Sink) {
-        (
-            Source(NodeBound::Literal(vec![ident.clone()])),
-            Sink(NodeBound::Literal(vec![ident])),
-        )
-    }
-
-    fn graph(embedding: Ident) -> (Source, Sink) {
-        (
-            Source(NodeBound::Graph(embedding.clone())),
-            Sink(NodeBound::Graph(embedding)),
-        )
-    }
-}
-
 impl IdFactory {
     #[inline]
-    fn graph_ident() -> Ident {
-        format_ident!("__graph")
-    }
-
-    #[inline]
-    fn graph_bounds(graph_ident: &Ident) -> (Ident, Ident) {
+    fn aggregate_group_bounds(group_id: usize) -> (Ident, Ident) {
         (
-            format_ident!("_{}_source", graph_ident),
-            format_ident!("_{}_sink", graph_ident),
+            format_ident!("_aggr_group_{}_source", group_id),
+            format_ident!("_aggr_group_{}_sink", group_id),
         )
     }
 
@@ -519,13 +350,12 @@ impl IdFactory {
     }
 
     #[inline]
+    fn embed_ident(embedding: &Ident) -> Ident {
+        format_ident!("_embed_bounds_{}", embedding)
+    }
+
+    #[inline]
     fn anonymous_node(counter: usize) -> Ident {
         format_ident!("anon_{}", counter)
-    }
-}
-
-impl Default for GraphIdent {
-    fn default() -> Self {
-        Self(IdFactory::graph_ident())
     }
 }
