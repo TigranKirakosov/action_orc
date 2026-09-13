@@ -6,7 +6,7 @@ use std::{
 };
 
 use action_orc_core::*;
-use action_orc_macros::orc;
+use action_orc_macros::*;
 use local_macros::*;
 
 use crate::*;
@@ -549,12 +549,12 @@ fn standalone_embedding_macro() {
     assert_eq!(order, vec!["A", "B"]);
 }
 
-/// Verifies [AsGraphEntryProxy] and '@' expression prefix work in conjuction
+/// Verifies [AsGraphProxy] and '@' expression prefix work in conjuction
 #[test]
 fn struct_expression() {
     declare_tags!(R, A, B, X, Y, X1, Y1);
 
-    pub struct Race<'a> {
+    struct Race<'a> {
         a: &'a Graph,
         b: &'a Graph,
     }
@@ -585,9 +585,9 @@ fn struct_expression() {
     let x = orc!(X -> X1;);
     let y = orc!(Y -> Y1;);
 
-    let g = composer(&x, &y);
+    let graph = composer(&x, &y);
 
-    let mut reactor = Reactor::from(g);
+    let mut reactor = Reactor::from(graph);
     let map = map_nodes(&reactor);
 
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -621,6 +621,114 @@ fn struct_expression() {
             (map.fetch("Y"), NodeStatus::Started),
             (map.fetch("X1"), NodeStatus::Started),
             (map.fetch("Y1"), NodeStatus::Started),
+            (map.fetch("B"), NodeStatus::Started),
+        ]
+    );
+}
+
+/// A derive-macro twin to [struct_expression]
+#[test]
+fn struct_expression_derive_macro() {
+    declare_tags!(R, A, B, X, Y, X1, Y1);
+
+    #[derive(Graph)]
+    #[orc(R -> (@a | @b))]
+    struct Race<'a> {
+        a: &'a Graph,
+        b: &'a Graph,
+    }
+
+    #[derive(Graph)]
+    #[orc(A -> @Race { a: x, b: y } -> B)]
+    struct Composer<'a> {
+        x: &'a Graph,
+        y: &'a Graph,
+    }
+
+    let x = &orc!(X -> X1;);
+    let y = &orc!(Y -> Y1;);
+
+    let graph = Composer { x, y };
+
+    let mut reactor = Reactor::from(graph);
+    let map = map_nodes(&reactor);
+
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let commands = Arc::new(Mutex::new(Vec::new()));
+
+    let log_clone = log.clone();
+    let commands_clone = commands.clone();
+
+    let listener = move |id, status| match status {
+        NodeStatus::Started => {
+            log_clone.lock().unwrap().push((id, status));
+            commands_clone
+                .lock()
+                .unwrap()
+                .push((id, Resolution::Finished));
+        }
+        _ => {}
+    };
+    mock_listeners!(reactor, listener, R, A, B, X, Y, X1, Y1);
+
+    reactor.init().unwrap();
+    drain_commands(&mut reactor, commands);
+
+    let log = log.lock().unwrap().clone();
+    assert_eq!(
+        log,
+        vec![
+            (map.fetch("A"), NodeStatus::Started),
+            (map.fetch("R"), NodeStatus::Started),
+            (map.fetch("X"), NodeStatus::Started),
+            (map.fetch("Y"), NodeStatus::Started),
+            (map.fetch("X1"), NodeStatus::Started),
+            (map.fetch("Y1"), NodeStatus::Started),
+            (map.fetch("B"), NodeStatus::Started),
+        ]
+    );
+}
+
+/// Verifies #[derive(Graph)] works on lifetimeless unit structs
+#[test]
+fn unit_struct_expression_derive_macro() {
+    declare_tags!(A, B, X, Y);
+
+    #[derive(Graph)]
+    #[orc(A -> (X | Y) -> B)]
+    struct Unit;
+
+    let mut reactor = Reactor::from(Unit);
+    let map = map_nodes(&reactor);
+
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let commands = Arc::new(Mutex::new(Vec::new()));
+
+    let log_clone = log.clone();
+    let commands_clone = commands.clone();
+
+    let listener = move |id, status| match status {
+        NodeStatus::Started => {
+            log_clone.lock().unwrap().push((id, status));
+            commands_clone
+                .lock()
+                .unwrap()
+                .push((id, Resolution::Finished));
+        }
+        _ => {}
+    };
+    mock_listeners!(reactor, listener, A, B, X, Y);
+
+    reactor.init().unwrap();
+    drain_commands(&mut reactor, commands);
+
+    let log = log.lock().unwrap().clone();
+    assert_eq!(
+        log,
+        vec![
+            (map.fetch("A"), NodeStatus::Started),
+            (map.fetch("X"), NodeStatus::Started),
+            (map.fetch("Y"), NodeStatus::Started),
             (map.fetch("B"), NodeStatus::Started),
         ]
     );

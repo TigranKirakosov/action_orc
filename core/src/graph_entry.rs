@@ -1,6 +1,6 @@
 use std::marker::PhantomData;
 
-use crate::{Graph, Marker, Meta};
+use crate::{Graph, GraphBuilder, Marker, Meta};
 
 pub enum GraphEntry<'a> {
     Node(Meta),
@@ -14,6 +14,21 @@ pub trait AsGraphEntry<'a> {
 
 pub trait AsGraphEntryProxy<'a> {
     fn as_entry_proxy(self) -> GraphEntry<'a>;
+
+    fn into_compiled_graph(self) -> Graph
+    where
+        Self: Sized,
+    {
+        match self.as_entry_proxy() {
+            GraphEntry::Node(meta) => {
+                let mut builder = GraphBuilder::new();
+                builder.append(GraphEntry::Node(meta));
+                builder.build()
+            }
+            GraphEntry::OwnedGraph(g) => g,
+            GraphEntry::BorrowedGraph(g) => g.clone(),
+        }
+    }
 }
 
 /// Leaf node wrapper to provide marker types with default [AsGraphEntry::as_entry] implementation.

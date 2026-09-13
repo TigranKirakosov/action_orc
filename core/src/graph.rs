@@ -9,7 +9,7 @@ pub enum GraphError {
     CycleDetected,
 }
 
-#[derive(Default)]
+#[derive(Default, Clone)]
 pub struct Graph {
     pub(crate) in_degree: Vec<usize>,
     pub(crate) adj: Vec<Vec<NodeId>>,

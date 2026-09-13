@@ -22,7 +22,8 @@ impl Reactor {
     ///
     /// Once given a [Graph], reactor is tied to it
     /// and will treat it as a static blueprint for underlying [Schedule].
-    pub fn from(graph: Graph) -> Self {
+    pub fn from<'a, G: AsGraphEntryProxy<'a>>(layout: G) -> Self {
+        let graph = layout.into_compiled_graph();
         let schedule = Schedule::from(&graph);
 
         Self {

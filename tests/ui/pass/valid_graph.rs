@@ -6,6 +6,8 @@ struct B;
 struct C;
 struct L;
 
+#[derive(Graph)]
+#[orc( R -> (@a | @b) )]
 pub struct Race<'a> {
     a: &'a Graph,
     b: &'a Graph,
@@ -18,8 +20,8 @@ fn main() {
     };
 
     // Make sharable refs so both _graph examples below could reuse them
-    let combat = &orc!(C;);
-    let loot = &orc!(L;);
+    let combat = &orc!(C);
+    let loot = &orc!(L);
 
     // Graph reference
     let _graph = orc! {
@@ -32,13 +34,13 @@ fn main() {
     };
 }
 
-/// An impl codegen uses to convert [Race] into a [Graph]
-impl<'a> AsGraphEntryProxy<'a> for Race<'a> {
-    fn as_entry_proxy(self) -> GraphEntry<'a> {
-        let Self { a, b } = self;
+// #[derive(Graph)] under the hood
+// impl<'a> AsGraphEntryProxy<'a> for Race<'a> {
+//     fn as_entry_proxy(self) -> GraphEntry<'a> {
+//         let Self { a, b } = self;
 
-        GraphEntry::OwnedGraph(orc! {
-            R -> ( @a | @b )
-        })
-    }
-}
+//         GraphEntry::OwnedGraph(orc! {
+//             R -> ( @a | @b )
+//         })
+//     }
+// }
