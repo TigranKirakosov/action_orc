@@ -626,24 +626,18 @@ fn struct_expression() {
     );
 }
 
-/// A derive-macro twin to [struct_expression]
+/// An attribute-macro #[graph(...)] twin to [struct_expression]
 #[test]
-fn struct_expression_derive_macro() {
+fn struct_expression_attribute_macro() {
     declare_tags!(R, A, B, X, Y, X1, Y1);
 
-    #[derive(Graph)]
-    #[orc(R -> (@a | @b))]
-    struct Race<'a> {
-        a: &'a Graph,
-        b: &'a Graph,
-    }
+    #[graph(R -> (@a | @b))]
+    #[params(a, b)]
+    struct Race;
 
-    #[derive(Graph)]
-    #[orc(A -> @Race { a: x, b: y } -> B)]
-    struct Composer<'a> {
-        x: &'a Graph,
-        y: &'a Graph,
-    }
+    #[graph(A -> @Race { a: x, b: y } -> B)]
+    #[params(x, y)]
+    struct Composer;
 
     let x = &orc!(X -> X1;);
     let y = &orc!(Y -> Y1;);
@@ -689,13 +683,12 @@ fn struct_expression_derive_macro() {
     );
 }
 
-/// Verifies #[derive(Graph)] works on lifetimeless unit structs
+/// Verifies #[graph(...)] works on unit structs
 #[test]
 fn unit_struct_expression_derive_macro() {
     declare_tags!(A, B, X, Y);
 
-    #[derive(Graph)]
-    #[orc(A -> (X | Y) -> B)]
+    #[graph(A -> (X | Y) -> B)]
     struct Unit;
 
     let mut reactor = Reactor::from(Unit);

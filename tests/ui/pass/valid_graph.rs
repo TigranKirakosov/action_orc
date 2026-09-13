@@ -6,12 +6,10 @@ struct B;
 struct C;
 struct L;
 
-#[derive(Graph)]
-#[orc( R -> (@a | @b) )]
-pub struct Race<'a> {
-    a: &'a Graph,
-    b: &'a Graph,
-}
+// Define parametrized graph
+#[graph( R -> (@a | @b) )]
+#[params(a, b)]
+struct Race;
 
 fn main() {
     // Implicit Leaf markers declaration
@@ -33,14 +31,3 @@ fn main() {
         A -> @Race { a: combat, b: loot } -> C;
     };
 }
-
-// #[derive(Graph)] under the hood
-// impl<'a> AsGraphEntryProxy<'a> for Race<'a> {
-//     fn as_entry_proxy(self) -> GraphEntry<'a> {
-//         let Self { a, b } = self;
-
-//         GraphEntry::OwnedGraph(orc! {
-//             R -> ( @a | @b )
-//         })
-//     }
-// }
