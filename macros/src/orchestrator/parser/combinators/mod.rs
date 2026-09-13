@@ -87,6 +87,64 @@ pub(super) fn type_path<'a>(input: &mut &'a [TokenTree]) -> ModalResult<Type, Pa
     Ok(typ)
 }
 
+pub(super) fn struct_expr<'a>(
+    input: &mut &'a [TokenTree],
+) -> ModalResult<syn::Expr, ParseError<'a>> {
+    let start_input = *input;
+
+    // Scan until hitting a terminal delimiter or an arrow `->`
+    let mut struct_len = 0;
+    for tt in input.iter() {
+        if let TokenTree::Punct(p) = tt {
+            let c = p.as_char();
+            if TYPE_PATH_TERMINATORS.contains(&c) {
+                break;
+            }
+            if c == '-' {
+                if let Some(TokenTree::Punct(next_p)) = input.get(struct_len + 1) {
+                    if next_p.as_char() == '>' {
+                        break;
+                    }
+                }
+            }
+        }
+        struct_len += 1;
+    }
+
+    // Terminated instantly
+    if struct_len == 0 {
+        return Err(ErrMode::Backtrack(ParseError::from_input(input)));
+    }
+
+    *input = &input[struct_len..];
+
+    let mut constructor_len = 0;
+    if let Some(TokenTree::Group(g)) = input.first()
+        && g.delimiter() == Delimiter::Brace
+    {
+        *input = &input[1..];
+        constructor_len += 1;
+    }
+
+    // Hand over parsing to syn to preserve token spans
+    let total_len = struct_len + constructor_len;
+    let expr_tokens = &start_input[..total_len];
+    let stream: TokenStream2 = expr_tokens.iter().cloned().collect();
+
+    let parsed_expr = syn::parse2::<syn::Expr>(stream).map_err(|syn_err| {
+        ErrMode::Backtrack(ParseError {
+            span_info: SpanInfo {
+                span: syn_err.span(),
+                at_call_site: false,
+            },
+            inner: ContextError::from_input(input),
+            input: *input,
+        })
+    })?;
+
+    Ok(parsed_expr)
+}
+
 pub(super) fn punct<'a>(
     expected: char,
 ) -> impl FnMut(&mut &'a [TokenTree]) -> ModalResult<(), ParseError<'a>> {

@@ -8,7 +8,7 @@
 fn dungeon_room(encounter: &Graph) -> Graph {
     orc! {
         // you can use both generic and pure labels
-        Entering<Armed> -> (LoreNarration | Animations) -> encounter -> Exiting<UnArmed>;
+        Entering<Armed> -> (LoreNarration | Animations) -> @encounter -> Exiting<UnArmed>;
     }
 }
 

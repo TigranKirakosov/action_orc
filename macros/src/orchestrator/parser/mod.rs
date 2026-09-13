@@ -125,26 +125,8 @@ fn binding<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<
 }
 
 fn expr_block<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>> {
-    let start_input = *input;
-
-    // Hop over struct type paths like `Race`
-    let _path = type_path.parse_next(input)?;
-    let mut path_len = start_input.len() - input.len();
-
-    // Process immediate struct initializer, i.e., `{ ... }` syntax
-    if let Some(TokenTree::Group(g)) = input.first()
-        && g.delimiter() == Delimiter::Brace
-    {
-        *input = &input[1..];
-        path_len += 1;
-    }
-
-    // Hand over parsing to syn to preserve token spans
-    let stream: proc_macro2::TokenStream = start_input[..path_len].iter().cloned().collect();
-    let parsed_expr = syn::parse2::<syn::Expr>(stream)
-        .map_err(|_| ErrMode::Backtrack(ParseError::from_input(input)))?;
-
-    Ok(NodeExpr::Expression(parsed_expr))
+    punct('@').parse_next(input)?;
+    struct_expr.map(NodeExpr::Expression).parse_next(input)
 }
 
 /// 1) (A | B | C)

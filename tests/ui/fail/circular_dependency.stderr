@@ -11,7 +11,7 @@ error: Task Graph Error: Circular dependency: B -> a.
    |                       ^
 
 error: Task Graph Error: Circular dependency: B -> combat.
-  --> tests/ui/fail/circular_dependency.rs:19:29
+  --> tests/ui/fail/circular_dependency.rs:19:31
    |
-19 |         A -> combat -> B -> combat;
-   |                             ^^^^^^
+19 |         A -> @combat -> B -> @combat;
+   |                               ^^^^^^

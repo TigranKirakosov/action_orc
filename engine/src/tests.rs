@@ -221,26 +221,26 @@ fn lifecycle_hooks() {
     let mut reactor = Reactor::from(g);
     let map = map_nodes(&reactor);
 
-    let lifecycle_log = Arc::new(Mutex::new(Vec::new()));
-    let log_clone = lifecycle_log.clone();
-    let lifecycle_logger = Arc::new(move |id, event| {
-        log_clone.lock().unwrap().push((id, event));
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let log_clone = log.clone();
+    let logger = Arc::new(move |id, status| {
+        log_clone.lock().unwrap().push((id, status));
     });
 
     reactor
-        .listen_for(TypeId::of::<A>(), lifecycle_logger.clone())
+        .listen_for(TypeId::of::<A>(), logger.clone())
         .unwrap();
     reactor
-        .listen_for(TypeId::of::<B>(), lifecycle_logger.clone())
+        .listen_for(TypeId::of::<B>(), logger.clone())
         .unwrap();
     reactor
-        .listen_for(TypeId::of::<C>(), lifecycle_logger.clone())
+        .listen_for(TypeId::of::<C>(), logger.clone())
         .unwrap();
-    assert_eq!(*lifecycle_log.lock().unwrap(), vec![]);
+    assert_eq!(*log.lock().unwrap(), vec![]);
 
     reactor.init().unwrap();
     assert_eq!(
-        *lifecycle_log.lock().unwrap(),
+        *log.lock().unwrap(),
         vec![(map.fetch("A"), NodeStatus::Started)]
     );
 
@@ -248,7 +248,7 @@ fn lifecycle_hooks() {
         .resolve(map.fetch("A"), Resolution::Finished)
         .unwrap();
     assert_eq! {
-        *lifecycle_log.lock().unwrap(),
+        *log.lock().unwrap(),
         vec![
             (map.fetch("A"), NodeStatus::Started),
             (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
@@ -260,7 +260,7 @@ fn lifecycle_hooks() {
         .resolve(map.fetch("B"), Resolution::Finished)
         .unwrap();
     assert_eq! {
-        *lifecycle_log.lock().unwrap(),
+        *log.lock().unwrap(),
         vec![
             (map.fetch("A"), NodeStatus::Started),
             (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
@@ -274,7 +274,7 @@ fn lifecycle_hooks() {
         .resolve(map.fetch("C"), Resolution::Finished)
         .unwrap();
     assert_eq! {
-        *lifecycle_log.lock().unwrap(),
+        *log.lock().unwrap(),
         vec![
             (map.fetch("A"), NodeStatus::Started),
             (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
@@ -317,14 +317,22 @@ fn nested_pipeline_composition() {
     let _loot_bounds = room.merge(&loot, combat_bounds.sinks);
 
     let mut reactor = Reactor::from(room);
-    mock_listeners!(reactor, Enter, SpawnEnemies, Fight, RollLoot, PickTreasure);
+    mock_listeners!(
+        reactor,
+        no_op_listener,
+        Enter,
+        SpawnEnemies,
+        Fight,
+        RollLoot,
+        PickTreasure
+    );
     let map = map_nodes(&reactor);
 
-    let lifecycle_log = Arc::new(Mutex::new(Vec::new()));
-    let log_clone = lifecycle_log.clone();
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let log_clone = log.clone();
     reactor
-        .listen_for(TypeId::of::<Exit>(), move |id, event| {
-            log_clone.lock().unwrap().push((id, event));
+        .listen_for(TypeId::of::<Exit>(), move |id, status| {
+            log_clone.lock().unwrap().push((id, status));
         })
         .unwrap();
 
@@ -335,13 +343,13 @@ fn nested_pipeline_composition() {
             .unwrap();
     }
 
-    assert!(lifecycle_log.lock().unwrap().is_empty(), "Exit blocked");
+    assert!(log.lock().unwrap().is_empty(), "Exit blocked");
     reactor
             .resolve(map.fetch("PickTreasure"), Resolution::Finished)
             .unwrap() // last task before Exit
     ;
     assert_eq!(
-        *lifecycle_log.lock().unwrap(),
+        *log.lock().unwrap(),
         vec![(map.fetch("Exit"), NodeStatus::Started)]
     );
 }
@@ -354,7 +362,7 @@ fn nested_pipeline_composition_macro() {
 
     fn room(a: &Graph, b: &Graph) -> Graph {
         orc! {
-            Enter -> a -> b -> Exit;
+            Enter -> @a -> @b -> Exit;
         }
     }
 
@@ -369,14 +377,22 @@ fn nested_pipeline_composition_macro() {
     let composed_room = room(&combat, &loot);
 
     let mut reactor = Reactor::from(composed_room);
-    mock_listeners!(reactor, Enter, SpawnEnemies, Fight, RollLoot, PickTreasure);
+    mock_listeners!(
+        reactor,
+        no_op_listener,
+        Enter,
+        SpawnEnemies,
+        Fight,
+        RollLoot,
+        PickTreasure
+    );
     let map = map_nodes(&reactor);
 
-    let lifecycle_log = Arc::new(Mutex::new(Vec::new()));
-    let log_clone = lifecycle_log.clone();
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let log_clone = log.clone();
     reactor
-        .listen_for(TypeId::of::<Exit>(), move |id, event| {
-            log_clone.lock().unwrap().push((id, event));
+        .listen_for(TypeId::of::<Exit>(), move |id, status| {
+            log_clone.lock().unwrap().push((id, status));
         })
         .unwrap();
 
@@ -387,13 +403,13 @@ fn nested_pipeline_composition_macro() {
             .unwrap();
     }
 
-    assert!(lifecycle_log.lock().unwrap().is_empty(), "Exit blocked");
+    assert!(log.lock().unwrap().is_empty(), "Exit blocked");
 
     reactor
         .resolve(map.fetch("PickTreasure"), Resolution::Finished)
         .unwrap(); // last task before Exit
     assert_eq!(
-        *lifecycle_log.lock().unwrap(),
+        *log.lock().unwrap(),
         vec![(map.fetch("Exit"), NodeStatus::Started)]
     );
 }
@@ -432,7 +448,7 @@ fn merge_into_parallel_set() {
     assert_eq!(order, vec!["A", "B", "X", "Y", "C"])
 }
 
-/// - G: `(a | b) -> H -> c`
+/// - G: `(a | b) -> @H -> c`
 /// - H: `x -> y`
 /// - Combined: `(a | b) -> x -> y -> c`
 #[test]
@@ -444,9 +460,9 @@ fn merge_into_parallel_set_macro() {
         X -> Y;
     );
 
-    // (a | b) -> H -> c
+    // (a | b) -> @H -> c
     let g = orc!(
-        (A | B) -> h -> C;
+        (A | B) -> @h -> C;
     );
 
     let order: Vec<&'static str> = g
@@ -459,7 +475,7 @@ fn merge_into_parallel_set_macro() {
     assert_eq!(order, vec!["A", "B", "X", "Y", "C"])
 }
 
-/// - G: `Enter -> ( A | H ) -> Exit`
+/// - G: `Enter -> ( A | @H ) -> Exit`
 /// - H: `X -> Y`
 /// - Combined: `Enter -> (A | X -> Y) -> Exit`
 #[test]
@@ -472,7 +488,7 @@ fn embed_graph_inside_parallel_group_macro() {
     );
 
     let g = orc!(
-        Enter -> ( A | h ) -> Exit;
+        Enter -> ( A | @h ) -> Exit;
     );
 
     let order: Vec<&'static str> = g
@@ -489,7 +505,7 @@ fn embed_graph_inside_parallel_group_macro() {
 }
 
 /// - H: `X -> Y`
-/// - G: `H -> (A | B) -> C`
+/// - G: `@H -> (A | B) -> C`
 /// - Combined: `X -> Y -> (A | B) -> C`
 #[test]
 fn embed_graph_fan_out_to_parallel_set_macro() {
@@ -501,7 +517,7 @@ fn embed_graph_fan_out_to_parallel_set_macro() {
     );
 
     let g = orc!(
-        h -> (A | B) -> C;
+        @h -> (A | B) -> C;
     );
 
     let order: Vec<&'static str> = g
@@ -520,7 +536,7 @@ fn standalone_embedding_macro() {
     let h = orc!(A -> B;);
 
     let g = orc!(
-        h;
+        @h;
     );
 
     let order: Vec<&'static str> = g
@@ -533,13 +549,108 @@ fn standalone_embedding_macro() {
     assert_eq!(order, vec!["A", "B"]);
 }
 
+/// Verifies [AsGraphEntryProxy] and '@' expression prefix work in conjuction
+#[test]
+fn struct_expression() {
+    declare_tags!(R, A, B, X, Y, X1, Y1);
+
+    pub struct Race<'a> {
+        a: &'a Graph,
+        b: &'a Graph,
+    }
+
+    impl<'a> AsGraphEntryProxy<'a> for Race<'a> {
+        fn as_entry_proxy(self) -> GraphEntry<'a> {
+            // Should work too
+            // let g = orc! {
+            //     R -> ( @self.a | @self.b )
+            // };
+
+            let Self { a, b } = self;
+
+            let g = orc! {
+                R -> ( @a | @b )
+            };
+
+            GraphEntry::OwnedGraph(g)
+        }
+    }
+
+    fn composer(x: &Graph, y: &Graph) -> Graph {
+        orc!(
+            A -> @Race { a: x, b: y } -> B;
+        )
+    }
+
+    let x = orc!(X -> X1;);
+    let y = orc!(Y -> Y1;);
+
+    let g = composer(&x, &y);
+
+    let mut reactor = Reactor::from(g);
+    let map = map_nodes(&reactor);
+
+    let log = Arc::new(Mutex::new(Vec::new()));
+    let commands = Arc::new(Mutex::new(Vec::new()));
+
+    let log_clone = log.clone();
+    let commands_clone = commands.clone();
+
+    let listener = move |id, status| match status {
+        NodeStatus::Started => {
+            log_clone.lock().unwrap().push((id, status));
+            commands_clone
+                .lock()
+                .unwrap()
+                .push((id, Resolution::Finished));
+        }
+        _ => {}
+    };
+    mock_listeners!(reactor, listener, R, A, B, X, Y, X1, Y1);
+
+    reactor.init().unwrap();
+    drain_commands(&mut reactor, commands);
+
+    let log = log.lock().unwrap().clone();
+    assert_eq!(
+        log,
+        vec![
+            (map.fetch("A"), NodeStatus::Started),
+            (map.fetch("R"), NodeStatus::Started),
+            (map.fetch("X"), NodeStatus::Started),
+            (map.fetch("Y"), NodeStatus::Started),
+            (map.fetch("X1"), NodeStatus::Started),
+            (map.fetch("Y1"), NodeStatus::Started),
+            (map.fetch("B"), NodeStatus::Started),
+        ]
+    );
+}
+
 trait Mapping<K, V> {
     fn fetch(&self, key: K) -> V;
 }
 
 impl Mapping<&'static str, NodeId> for HashMap<&'static str, NodeId> {
     fn fetch(&self, key: &'static str) -> NodeId {
-        self.get(key).copied().unwrap()
+        let sentinel = usize::MAX;
+        self.get(key).copied().unwrap_or(sentinel)
+    }
+}
+
+fn drain_commands(reactor: &mut Reactor, commands: Arc<Mutex<Vec<(NodeId, Resolution)>>>) {
+    loop {
+        let pending: Vec<(NodeId, Resolution)> = {
+            let mut guard = commands.lock().unwrap();
+            std::mem::take(&mut *guard)
+        };
+
+        if pending.is_empty() {
+            break;
+        }
+
+        for (id, resolution) in pending {
+            let _ = reactor.resolve(id, resolution);
+        }
     }
 }
 
@@ -551,6 +662,8 @@ fn map_nodes(reactor: &Reactor) -> HashMap<&'static str, NodeId> {
 
     s2i
 }
+
+fn no_op_listener(_: usize, _: NodeStatus) {}
 
 mod local_macros {
     macro_rules! declare_tags {
@@ -573,9 +686,9 @@ mod local_macros {
     pub(crate) use add_nodes;
 
     macro_rules! mock_listeners {
-        ($reactor:expr, $($tag:ident),* $(,)?) => {
+        ($reactor:expr, $listener:expr, $($tag:ident),* $(,)?) => {
             $(
-                $reactor.listen_for(std::any::TypeId::of::<$tag>(), |_, _| {}).unwrap();
+                $reactor.listen_for(std::any::TypeId::of::<$tag>(), $listener.clone()).unwrap();
             )*
         };
     }
