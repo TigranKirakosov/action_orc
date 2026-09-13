@@ -82,8 +82,7 @@ fn graph<'a>(input: &mut &'a [TokenTree]) -> ModalResult<Graph, ParseError<'a>> 
 }
 
 fn node_expr<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>> {
-    let expr = alt((embedding, binding, decl, group)).parse_next(input)?;
-    Ok(expr)
+    alt((binding, group, decl, expr_block)).parse_next(input)
 }
 
 /// 1) a: A
@@ -95,21 +94,28 @@ fn decl<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>
         }
     }
 
-    let declaration = alt((
+    alt((
         // var: scenario::Entering<Dungeon>
         (ident, punct(':'), type_path).map(|(var, _, typ)| Declartaion {
             var: Some(var),
             typ,
         }),
-        // scenario::Entering<Dungeon>
-        type_path.map(|typ| Declartaion { var: None, typ }),
+        // Type tag, e.g. `Enter` (must be strictly uppercase)
+        type_path
+            .verify(|typ: &syn::Type| {
+                let type_string = quote::quote!(#typ).to_string();
+                type_string
+                    .chars()
+                    .next()
+                    .map_or(false, |c| !c.is_lowercase())
+            })
+            .map(|typ| Declartaion { var: None, typ }),
     ))
-    .parse_next(input)?;
-
-    Ok(NodeExpr::Declaration(declaration))
+    .map(NodeExpr::Declaration)
+    .parse_next(input)
 }
 
-/// [var]
+// [var]
 fn binding<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>> {
     let expr = enclosed(Delimiter::Bracket, ident, "var binding")
         .map(NodeExpr::Binding)
@@ -118,15 +124,27 @@ fn binding<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<
     Ok(expr)
 }
 
-/// #[var]
-fn embedding<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>> {
-    let (_, expr) = (
-        punct('#'),
-        enclosed(Delimiter::Bracket, ident, "var embedding").map(NodeExpr::Embedding),
-    )
-        .parse_next(input)?;
+fn expr_block<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>> {
+    let start_input = *input;
 
-    Ok(expr)
+    // Hop over struct type paths like `Race`
+    let _path = type_path.parse_next(input)?;
+    let mut path_len = start_input.len() - input.len();
+
+    // Process immediate struct initializer, i.e., `{ ... }` syntax
+    if let Some(TokenTree::Group(g)) = input.first()
+        && g.delimiter() == Delimiter::Brace
+    {
+        *input = &input[1..];
+        path_len += 1;
+    }
+
+    // Hand over parsing to syn to preserve token spans
+    let stream: proc_macro2::TokenStream = start_input[..path_len].iter().cloned().collect();
+    let parsed_expr = syn::parse2::<syn::Expr>(stream)
+        .map_err(|_| ErrMode::Backtrack(ParseError::from_input(input)))?;
+
+    Ok(NodeExpr::Expression(parsed_expr))
 }
 
 /// 1) (A | B | C)

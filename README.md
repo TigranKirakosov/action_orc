@@ -26,7 +26,7 @@ A declarative DSL for composing hierarchical execution graphs in Rust.
 - Declare nodes: bind handles (`node: Marker`) or match anonymously (`Marker`)
 - Map dependencies: `lhs -> rhs` (i.e., **lhs** blocks **rhs**)
 - Bind already declared nodes: `[b] -> y`
-- Compose graphs: dynamically embed sub-graphs (`A -> #[sub] -> B`)
+- Compose graphs: dynamically embed sub-graphs (`A -> sub -> B`)
 - Group nodes into ordered *Sequences* or *Parallel* branches:
     - Sequence block: `(a, b, c)`
     - Parallel block: `(x | y | z)`
@@ -39,15 +39,15 @@ fn warchief_campaign(reinforce: &Graph) -> Graph {
         // Define first timeline
         BuildCamp -> (
             gather: GatherResources,
-            // make #[reinforce] dependant on upstream nodes
-            (Defend | RequestReinforcements) -> #[reinforce],
+            // make reinforce dependant on upstream nodes
+            (Defend | RequestReinforcements) -> reinforce,
         );
 
-        // Define second parallel timline, linked with the first one by [gather] and #[reinforce] nodes
+        // Define second parallel timline, linked with the first one by [gather] and `reinforce` nodes
         prepare: PrepareCampaign -> (
             [gather] -> BuildWarmachines
             | TrainGrunts
-            | #[reinforce] // make this timline dependant on #[reinforce] aswell
+            | reinforce // make this timline dependant on `reinforce` aswell
         );
 
         // Declare exit node

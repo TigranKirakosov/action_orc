@@ -16,6 +16,6 @@ fn main() {
     let combat = orc! { A; };
 
     let _graph = orc! {
-        A -> #[combat] -> B -> #[combat];
+        A -> combat -> B -> combat;
     };
 }

@@ -19,7 +19,6 @@ struct Context {
     node_id_map: HashMap<Ident, usize>,
     anon_map: HashMap<Ident, TypeStr>,
     unbound_types: HashSet<TypeStr>,
-    embeddings: HashSet<Ident>,
     errors: Vec<CodegenError>,
 }
 
@@ -96,7 +95,7 @@ impl Context {
                     .map(|v| v.span())
                     .unwrap_or_else(|| task.typ.span()),
                 NodeExpr::Binding(var) => var.span(),
-                NodeExpr::Embedding(emb) => emb.span(),
+                NodeExpr::Expression(expr) => expr.span(),
                 NodeExpr::Group(block) => block.span_info.span,
             };
 
@@ -119,7 +118,7 @@ impl Context {
         match node {
             NodeExpr::Declaration(task) => self.process_declaration(task),
             NodeExpr::Binding(binding) => self.process_binding(binding),
-            NodeExpr::Embedding(embedding) => self.process_embedding(embedding),
+            NodeExpr::Expression(expression) => self.process_expression(expression),
             NodeExpr::Group(group) => self.process_group(group),
         }
     }
@@ -234,25 +233,48 @@ impl Context {
         (Source(binding.clone()), Sink(binding))
     }
 
-    /// Processes embedding once to build its bounds.
-    ///
-    /// On subsequent calls just returns stable [Ident] source and sink.
-    fn process_embedding(&mut self, embedding: Ident) -> (Source, Sink) {
-        let bounds_ident = IdFactory::embed_ident(&embedding);
+    /// Checks two types of expressions:
+    /// - **A**: Single variable: `... -> some_sub_graph -> ...`
+    /// - **B**: Complex: `Race(x, y)`
+    fn process_expression(&mut self, expr: syn::Expr) -> (Source, Sink) {
+        // Case A
+        if let syn::Expr::Path(ref expr_path) = expr
+            && expr_path.path.leading_colon.is_none()
+            && expr_path.path.segments.len() == 1
+        {
+            let embedding = expr_path.path.segments[0].ident.clone();
+            let bounds_ident = IdFactory::embed_ident(&embedding);
 
-        if !self.embeddings.contains(&embedding) {
-            self.embeddings.insert(embedding.clone());
+            if !self.unbound_types.contains(&embedding.to_string()) {
+                self.unbound_types.insert(embedding.to_string());
 
-            let decl = quote! {
-                let #bounds_ident = builder.append(AsGraphEntry::as_entry(#embedding));
-            };
-            let node_id = self.graph_as_node(&embedding);
+                let decl = quote! {
+                    let #bounds_ident = builder.append(AsGraphEntryProxy::as_entry_proxy(#expr));
+                };
+                self.decls.push(decl);
 
-            self.decls.push(decl);
-            self.anon_map
-                .insert(bounds_ident.clone(), embedding.clone().to_string());
-            self.node_id_map.insert(bounds_ident.clone(), node_id);
+                let node_id = self.compile_graph.add_node::<DummyMarker>();
+                self.anon_map
+                    .insert(bounds_ident.clone(), embedding.to_string());
+                self.node_id_map.insert(bounds_ident.clone(), node_id);
+            }
+
+            return (Source(bounds_ident.clone()), Sink(bounds_ident));
         }
+
+        // Case B
+        let bounds_ident = IdFactory::expression_ident(self.anon_id_counter);
+        self.anon_id_counter += 1;
+
+        let decl = quote! {
+            let #bounds_ident = builder.append(AsGraphEntryProxy::as_entry_proxy(#expr));
+        };
+        self.decls.push(decl);
+
+        let node_id = self.compile_graph.add_node::<DummyMarker>();
+        self.anon_map
+            .insert(bounds_ident.clone(), quote!(#expr).to_string());
+        self.node_id_map.insert(bounds_ident.clone(), node_id);
 
         (Source(bounds_ident.clone()), Sink(bounds_ident))
     }
@@ -287,18 +309,6 @@ impl Context {
                 to: to_name,
                 span,
             });
-        }
-    }
-
-    /// Register group or embedded graph as a flat node of compile graph
-    /// to resolve circular dependencies at compile-time
-    fn graph_as_node(&mut self, ident: &Ident) -> usize {
-        if let Some(&id) = self.node_id_map.get(ident) {
-            id
-        } else {
-            let node_id = self.compile_graph.add_node::<DummyMarker>();
-            self.node_id_map.insert(ident.clone(), node_id);
-            node_id
         }
     }
 }
@@ -352,6 +362,11 @@ impl IdFactory {
     #[inline]
     fn embed_ident(embedding: &Ident) -> Ident {
         format_ident!("_embed_bounds_{}", embedding)
+    }
+
+    #[inline]
+    fn expression_ident(id: usize) -> Ident {
+        format_ident!("_expr_bounds_{}", id)
     }
 
     #[inline]

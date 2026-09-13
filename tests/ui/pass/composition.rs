@@ -19,19 +19,19 @@ fn loot_fn() -> Graph {
 }
 
 /// Use refs (&) for combat and loot graphs so that they
-/// could be used by subsequent graph declarations
+/// could be reused by subsequent graph declarations
 fn main() {
     let (combat, loot) = (&combat_fn(), &loot_fn());
 
     let _linear_composed = orc! {
-        Enter -> #[combat] -> #[loot] -> Exit;
+        Enter -> combat -> loot -> Exit;
     };
 
     let _parallel_composed = orc! {
-        Enter -> ( TaskA | #[combat] | TaskB ) -> Exit;
+        Enter -> ( TaskA | combat | TaskB ) -> Exit;
     };
 
     let _start_embedded = orc! {
-        #[combat] -> Exit;
+        combat -> Exit;
     };
 }

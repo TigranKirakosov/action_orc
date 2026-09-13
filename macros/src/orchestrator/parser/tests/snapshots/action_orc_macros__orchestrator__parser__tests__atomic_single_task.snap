@@ -6,7 +6,7 @@ SyntaxTree {
     graphs: [
         Graph {
             entry: Declaration(
-                Task {
+                Declaration {
                     var: Some(
                         "a",
                     ),

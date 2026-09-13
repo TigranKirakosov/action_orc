@@ -6,7 +6,7 @@ SyntaxTree {
     graphs: [
         Graph {
             entry: Declaration(
-                Task {
+                Declaration {
                     var: Some(
                         "enter",
                     ),
@@ -15,7 +15,7 @@ SyntaxTree {
             ),
             conns: [
                 Declaration(
-                    Task {
+                    Declaration {
                         var: Some(
                             "inited",
                         ),
@@ -41,7 +41,7 @@ SyntaxTree {
                         graphs: [
                             Graph {
                                 entry: Declaration(
-                                    Task {
+                                    Declaration {
                                         var: None,
                                         typ: "A",
                                     },
@@ -54,7 +54,7 @@ SyntaxTree {
                             },
                             Graph {
                                 entry: Declaration(
-                                    Task {
+                                    Declaration {
                                         var: None,
                                         typ: "B",
                                     },
@@ -67,7 +67,7 @@ SyntaxTree {
                             },
                             Graph {
                                 entry: Declaration(
-                                    Task {
+                                    Declaration {
                                         var: None,
                                         typ: "C",
                                     },
@@ -86,7 +86,7 @@ SyntaxTree {
                     },
                 ),
                 Declaration(
-                    Task {
+                    Declaration {
                         var: Some(
                             "exit",
                         ),

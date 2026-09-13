@@ -354,7 +354,7 @@ fn nested_pipeline_composition_macro() {
 
     fn room(a: &Graph, b: &Graph) -> Graph {
         orc! {
-            Enter -> #[a] -> #[b] -> Exit;
+            Enter -> a -> b -> Exit;
         }
     }
 
@@ -432,7 +432,7 @@ fn merge_into_parallel_set() {
     assert_eq!(order, vec!["A", "B", "X", "Y", "C"])
 }
 
-/// - G: `(a | b) -> #[sub] -> c`
+/// - G: `(a | b) -> H -> c`
 /// - H: `x -> y`
 /// - Combined: `(a | b) -> x -> y -> c`
 #[test]
@@ -444,9 +444,9 @@ fn merge_into_parallel_set_macro() {
         X -> Y;
     );
 
-    // (a | b) -> #[sub] -> c
+    // (a | b) -> H -> c
     let g = orc!(
-        (A | B) -> #[h] -> C;
+        (A | B) -> h -> C;
     );
 
     let order: Vec<&'static str> = g
@@ -459,20 +459,20 @@ fn merge_into_parallel_set_macro() {
     assert_eq!(order, vec!["A", "B", "X", "Y", "C"])
 }
 
-/// - G: `Enter -> ( A | #[sub] ) -> Exit`
-/// - #[sub]: `X -> Y`
+/// - G: `Enter -> ( A | H ) -> Exit`
+/// - H: `X -> Y`
 /// - Combined: `Enter -> (A | X -> Y) -> Exit`
 #[test]
 fn embed_graph_inside_parallel_group_macro() {
     declare_tags!(X, Y);
     declare_tags!(Enter, A, Exit);
 
-    let sub = orc!(
+    let h = orc!(
         X -> Y;
     );
 
     let g = orc!(
-        Enter -> ( A | #[sub] ) -> Exit;
+        Enter -> ( A | h ) -> Exit;
     );
 
     let order: Vec<&'static str> = g
@@ -488,20 +488,20 @@ fn embed_graph_inside_parallel_group_macro() {
     assert_eq!(*order.last().unwrap(), "Exit");
 }
 
-/// - #[sub]: `X -> Y`
-/// - G: `#[sub] -> (A | B) -> C`
+/// - H: `X -> Y`
+/// - G: `H -> (A | B) -> C`
 /// - Combined: `X -> Y -> (A | B) -> C`
 #[test]
 fn embed_graph_fan_out_to_parallel_set_macro() {
     declare_tags!(X, Y);
     declare_tags!(A, B, C);
 
-    let sub = orc!(
+    let h = orc!(
         X -> Y;
     );
 
     let g = orc!(
-        #[sub] -> (A | B) -> C;
+        h -> (A | B) -> C;
     );
 
     let order: Vec<&'static str> = g
@@ -517,10 +517,10 @@ fn embed_graph_fan_out_to_parallel_set_macro() {
 #[test]
 fn standalone_embedding_macro() {
     declare_tags!(A, B);
-    let sub = orc!(A -> B;);
+    let h = orc!(A -> B;);
 
     let g = orc!(
-        #[sub];
+        h;
     );
 
     let order: Vec<&'static str> = g

@@ -1,4 +1,4 @@
-use syn::{Ident, Type};
+use syn::{Expr, Ident, Type};
 
 use super::format_type;
 use super::parser::SpanInfo;
@@ -26,8 +26,8 @@ pub(super) enum NodeExpr {
     /// A bound node identifier reference, e.g. [in]
     Binding(Ident),
 
-    /// A bound graph identifier reference, e.g. #[in]
-    Embedding(Ident),
+    /// Any expression that results in a [action_orc_core::AsGraphEntry]
+    Expression(Expr),
 
     /// (A | B | C) or (A, B, C) or (A -> B -> C)
     Group(GroupBlock),
@@ -60,7 +60,7 @@ impl std::fmt::Debug for Declartaion {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
         let type_string = format_type(&self.typ);
 
-        f.debug_struct("Task")
+        f.debug_struct("Declaration")
             .field("var", &self.var.clone().map(|var| var.to_string()))
             .field("typ", &type_string)
             .finish()
