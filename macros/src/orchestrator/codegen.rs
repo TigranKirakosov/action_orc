@@ -1,3 +1,5 @@
+#[allow(unused)]
+use action_orc_core::{Graph as OrcGraph, GraphEntry, GraphError as OrcGraphError};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned};
@@ -11,7 +13,7 @@ use super::{
 
 #[derive(Default)]
 struct Context {
-    compile_graph: action_orc_core::Graph,
+    compile_graph: OrcGraph,
     decls: Vec<TokenStream2>,
     links: Vec<TokenStream2>,
     parallel_group_id_counter: usize,
@@ -189,6 +191,9 @@ impl Context {
         }
     }
 
+    /// Resolves declaration into possible variants:
+    /// - [GraphEntry::Node]
+    /// - [GraphEntry::OwnedGraph]
     fn process_declaration(&mut self, decl: Declartaion) -> (Source, Sink) {
         let Declartaion { var, typ } = decl;
         let type_key = format_type(&typ);
@@ -211,9 +216,9 @@ impl Context {
         });
 
         let decl = quote! {
-            let #bounds_ident = builder.append(
-                AsGraphEntry::as_entry(Tag::<#typ>(std::marker::PhantomData))
-            );
+            let #bounds_ident = builder.append({
+                (&&Tag::<#typ>(std::marker::PhantomData)).resolve()
+            });
         };
         self.decls.push(decl);
 
@@ -292,7 +297,7 @@ impl Context {
 
         self.compile_graph.add_edge(from_id, to_id);
 
-        if let Err(action_orc_core::GraphError::CycleDetected) = self.compile_graph.sort_ordered() {
+        if let Err(OrcGraphError::CycleDetected) = self.compile_graph.sort_ordered() {
             let from_name = self
                 .anon_map
                 .get(from)
@@ -361,7 +366,8 @@ impl IdFactory {
 
     #[inline]
     fn embed_ident(embedding: &Ident) -> Ident {
-        format_ident!("_embed_bounds_{}", embedding)
+        let lower_name = embedding.to_string().to_lowercase();
+        format_ident!("_embed_bounds_{}", lower_name)
     }
 
     #[inline]

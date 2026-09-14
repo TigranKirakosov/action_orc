@@ -11,6 +11,23 @@ struct L;
 #[params(a, b)]
 struct Race;
 
+// Define unit graph
+#[graph( A -> B )]
+struct Unit;
+
+// Embed unit graph without '@' prefix
+#[graph( Unit -> C )]
+struct EmbedVariantOne;
+
+// Embed unit graph wit '@' prefix
+#[graph( @Unit -> C )]
+struct EmbedVariantTwo;
+
+// Embed compound graph strictly with '@' prefix
+#[graph( @Race { a: x, b: y } -> C )]
+#[params(x, y)]
+struct EmbedVariantThree;
+
 fn main() {
     // Implicit Leaf markers declaration
     let _graph = orc! {

@@ -2,6 +2,8 @@ use std::marker::PhantomData;
 
 use crate::{Graph, GraphBuilder, Marker, Meta};
 
+pub trait IsSubGraph {}
+
 pub enum GraphEntry<'a> {
     Node(Meta),
     BorrowedGraph(&'a Graph),
@@ -12,7 +14,7 @@ pub trait AsGraphEntry<'a> {
     fn as_entry(this: Self) -> GraphEntry<'a>;
 }
 
-pub trait AsGraphEntryProxy<'a> {
+pub trait AsGraphEntryProxy<'a>: Send + Sync {
     fn as_entry_proxy(self) -> GraphEntry<'a>;
 
     fn into_compiled_graph(self) -> Graph
@@ -61,5 +63,29 @@ impl<'a> AsGraphEntryProxy<'a> for &'a Graph {
 impl<'a> AsGraphEntryProxy<'a> for Graph {
     fn as_entry_proxy(self) -> GraphEntry<'a> {
         GraphEntry::OwnedGraph(self)
+    }
+}
+
+/// Helper trait for proc-macro to resolve [Tag] into a [GraphEntry::Node]
+pub trait AsNodeEntry<'a, T> {
+    fn resolve(self) -> GraphEntry<'a>;
+}
+
+impl<'a, T: Marker> AsNodeEntry<'a, T> for &Tag<T> {
+    #[inline(always)]
+    fn resolve(self) -> GraphEntry<'a> {
+        AsGraphEntry::as_entry(Tag::<T>(std::marker::PhantomData))
+    }
+}
+
+/// Helper trait for proc-macro to resolve [Tag] into a [GraphEntry::OwnedGraph]
+pub trait AsSubgraphEntry<'a, T> {
+    fn resolve(self) -> GraphEntry<'a>;
+}
+
+impl<'a, T: IsSubGraph + AsGraphEntryProxy<'a> + Default> AsSubgraphEntry<'a, T> for &&Tag<T> {
+    #[inline(always)]
+    fn resolve(self) -> GraphEntry<'a> {
+        <T as Default>::default().as_entry_proxy()
     }
 }

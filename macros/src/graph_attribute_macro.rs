@@ -58,9 +58,9 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    // Presence of #[params(x, y, z)] means we must inject <'a> lifetime to
-    // support 'pub member: &'a Graph' contract
     let (final_impl_generics, final_ty_generics, final_struct) =
+        // Presence of #[params(x, y, z)] means we must inject <'a> lifetime to
+        // support 'pub member: &'a Graph' contract
         if has_params || generics.lifetimes().next().is_some() {
             let current_struct = if generics.lifetimes().next().is_none() {
                 let mut modified_struct = input_struct.clone();
@@ -85,13 +85,23 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
             };
 
             (impl_g, ty_g, current_struct)
-        } else {
-            // Emit placeholder
-            (quote! { <'a> }, quote! {}, quote! { #input_struct })
+        }
+        // Unit struct derives Default so `orc!` macro can make instance to access transitive traits
+        else {
+            (
+                quote! { <'a> },
+                quote! {},
+                quote! {
+                    #[derive(Default)]
+                    #input_struct
+                },
+            )
         };
 
     let destructure_stmt = if has_params {
         quote! {
+            // Presence of unused variables hints user forgot to add '@' prefix before compund subgraph
+            #[deny(unused_variables)]
             let Self { #(#param_idents),* } = self;
         }
     } else {
@@ -100,6 +110,8 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let expanded = quote! {
         #final_struct
+
+        impl #final_impl_generics IsSubGraph for #name #final_ty_generics #where_clause {}
 
         impl #final_impl_generics AsGraphEntryProxy<'a> for #name #final_ty_generics #where_clause {
             fn as_entry_proxy(self) -> GraphEntry<'a> {

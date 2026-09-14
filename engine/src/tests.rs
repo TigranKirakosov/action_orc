@@ -629,13 +629,16 @@ fn struct_expression() {
 /// An attribute-macro #[graph(...)] twin to [struct_expression]
 #[test]
 fn struct_expression_attribute_macro() {
-    declare_tags!(R, A, B, X, Y, X1, Y1);
+    declare_tags!(R, A, B, X, Y, X1, Y1, O, K);
 
     #[graph(R -> (@a | @b))]
     #[params(a, b)]
     struct Race;
 
-    #[graph(A -> @Race { a: x, b: y } -> B)]
+    #[graph(O -> K)]
+    struct JustAContainer;
+
+    #[graph(A -> @Race { a: x, b: y } -> JustAContainer -> B)]
     #[params(x, y)]
     struct Composer;
 
@@ -645,6 +648,21 @@ fn struct_expression_attribute_macro() {
     let graph = Composer { x, y };
 
     let mut reactor = Reactor::from(graph);
+
+    // JustAContainer shouldn't be registered as node, hence not expected
+    let expected_types = ["R", "A", "B", "X", "Y", "X1", "Y1", "O", "K"];
+    let missing_types: Vec<&'static str> = reactor
+        .node_meta()
+        .iter()
+        .map(|(_, meta)| meta.type_name())
+        .filter(|t| !expected_types.contains(&t))
+        .collect();
+
+    assert!(
+        missing_types.is_empty(),
+        "Graph compiled without expected meta types: {missing_types:#?}"
+    );
+
     let map = map_nodes(&reactor);
 
     let log = Arc::new(Mutex::new(Vec::new()));
@@ -663,7 +681,7 @@ fn struct_expression_attribute_macro() {
         }
         _ => {}
     };
-    mock_listeners!(reactor, listener, R, A, B, X, Y, X1, Y1);
+    mock_listeners!(reactor, listener, R, A, B, X, Y, X1, Y1, O, K);
 
     reactor.init().unwrap();
     drain_commands(&mut reactor, commands);
@@ -678,6 +696,8 @@ fn struct_expression_attribute_macro() {
             (map.fetch("Y"), NodeStatus::Started),
             (map.fetch("X1"), NodeStatus::Started),
             (map.fetch("Y1"), NodeStatus::Started),
+            (map.fetch("O"), NodeStatus::Started),
+            (map.fetch("K"), NodeStatus::Started),
             (map.fetch("B"), NodeStatus::Started),
         ]
     );
