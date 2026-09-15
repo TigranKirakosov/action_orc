@@ -219,7 +219,7 @@ fn lifecycle_hooks() {
     );
 
     let mut reactor = Reactor::from(g);
-    let map = map_nodes(&reactor);
+    let map = map_nodes(reactor.node_meta().as_slice());
 
     let log = Arc::new(Mutex::new(Vec::new()));
     let log_clone = log.clone();
@@ -326,7 +326,7 @@ fn nested_pipeline_composition() {
         RollLoot,
         PickTreasure
     );
-    let map = map_nodes(&reactor);
+    let map = map_nodes(reactor.node_meta().as_slice());
 
     let log = Arc::new(Mutex::new(Vec::new()));
     let log_clone = log.clone();
@@ -386,7 +386,7 @@ fn nested_pipeline_composition_macro() {
         RollLoot,
         PickTreasure
     );
-    let map = map_nodes(&reactor);
+    let map = map_nodes(reactor.node_meta().as_slice());
 
     let log = Arc::new(Mutex::new(Vec::new()));
     let log_clone = log.clone();
@@ -588,7 +588,7 @@ fn struct_expression() {
     let graph = composer(&x, &y);
 
     let mut reactor = Reactor::from(graph);
-    let map = map_nodes(&reactor);
+    let map = map_nodes(reactor.node_meta().as_slice());
 
     let log = Arc::new(Mutex::new(Vec::new()));
     let commands = Arc::new(Mutex::new(Vec::new()));
@@ -663,7 +663,7 @@ fn struct_expression_attribute_macro() {
         "Graph compiled without expected meta types: {missing_types:#?}"
     );
 
-    let map = map_nodes(&reactor);
+    let map = map_nodes(reactor.node_meta().as_slice());
 
     let log = Arc::new(Mutex::new(Vec::new()));
     let commands = Arc::new(Mutex::new(Vec::new()));
@@ -712,7 +712,7 @@ fn unit_struct_expression_derive_macro() {
     struct Unit;
 
     let mut reactor = Reactor::from(Unit);
-    let map = map_nodes(&reactor);
+    let map = map_nodes(reactor.node_meta().as_slice());
 
     let log = Arc::new(Mutex::new(Vec::new()));
     let commands = Arc::new(Mutex::new(Vec::new()));
@@ -747,6 +747,202 @@ fn unit_struct_expression_derive_macro() {
     );
 }
 
+#[test]
+fn orchestrator_schedule_loop() {
+    declare_tags!(A, B, C);
+
+    #[graph(A -> B -> C)]
+    struct Graph;
+
+    let mut orchestrator = Orchestrator::new(Graph, ScheduleConfig { should_loop: true }).unwrap();
+
+    let resolver = orchestrator.resolver();
+    let map = map_nodes(orchestrator.node_meta().as_slice());
+
+    orchestrator.start().unwrap();
+
+    let is_complete = orchestrator.tick().unwrap();
+    assert!(
+        !is_complete,
+        "Schedule should not be marked done while threads are processing"
+    );
+
+    let wave_1_events = orchestrator.drain_events();
+    assert_eq!(wave_1_events, vec![(map.fetch("A"), NodeStatus::Started),]);
+
+    resolver
+        .send((map.fetch("A"), Resolution::Finished))
+        .unwrap();
+
+    let is_complete = orchestrator.tick().unwrap();
+    assert!(!is_complete);
+
+    let wave_2_events = orchestrator.drain_events();
+    assert_eq!(
+        wave_2_events,
+        vec![
+            (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch("B"), NodeStatus::Started),
+        ]
+    );
+
+    resolver
+        .send((map.fetch("B"), Resolution::Finished))
+        .unwrap();
+
+    orchestrator.tick().unwrap();
+    let wave_3_events = orchestrator.drain_events();
+    assert_eq!(
+        wave_3_events,
+        vec![
+            (map.fetch("B"), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch("C"), NodeStatus::Started),
+        ]
+    );
+
+    resolver
+        .send((map.fetch("C"), Resolution::Finished))
+        .unwrap();
+
+    orchestrator.tick().unwrap();
+    let wave_4_events = orchestrator.drain_events();
+    assert_eq!(
+        wave_4_events,
+        vec![(map.fetch("C"), NodeStatus::Resolved(Resolution::Finished)),]
+    );
+
+    let is_complete = orchestrator.tick().unwrap();
+    assert!(
+        !is_complete,
+        "Loop schedule resets instead of exiting execution"
+    );
+
+    let loop_reset_events = orchestrator.drain_events();
+    assert_eq!(
+        loop_reset_events,
+        vec![(map.fetch("A"), NodeStatus::Started),]
+    );
+}
+
+// F is blocked by [e]
+// [e] is blocked by both [b] and [d]
+// [d] is blocked by C
+// Topological order:
+// A, (B, C, D or C, D, B or C, B, D), E, F
+#[test]
+fn orchestrator_topological_correctness() {
+    declare_tags!(A, B, C, D, E, F);
+
+    #[graph(
+        a: A -> (b: B | C -> d: D);
+        ([b] | [d]) -> e: E;
+        [e] -> F;
+    )]
+    struct Graph;
+
+    let mut orchestrator = Orchestrator::new(Graph, ScheduleConfig { should_loop: true }).unwrap();
+
+    let resolver = orchestrator.resolver();
+    let map = map_nodes(orchestrator.node_meta().as_slice());
+
+    orchestrator.start().unwrap();
+
+    let is_complete = orchestrator.tick().unwrap();
+    assert!(!is_complete);
+
+    let events = orchestrator.drain_events();
+    assert_eq!(events, vec![(map.fetch("A"), NodeStatus::Started)]);
+
+    resolver
+        .send((map.fetch("A"), Resolution::Finished))
+        .unwrap();
+    orchestrator.tick().unwrap();
+
+    let events = orchestrator.drain_events();
+    assert_eq!(
+        events,
+        vec![
+            (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch("B"), NodeStatus::Started),
+            (map.fetch("C"), NodeStatus::Started),
+        ]
+    );
+
+    // TEST NON-DETERMINISM: resolve the C -> D before B finishes
+    resolver
+        .send((map.fetch("C"), Resolution::Finished))
+        .unwrap();
+    orchestrator.tick().unwrap();
+
+    let events = orchestrator.drain_events();
+    assert_eq!(
+        events,
+        vec![
+            (map.fetch("C"), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch("D"), NodeStatus::Started),
+        ]
+    );
+
+    resolver
+        .send((map.fetch("D"), Resolution::Finished))
+        .unwrap();
+    orchestrator.tick().unwrap();
+
+    let events = orchestrator.drain_events();
+    assert_eq!(
+        events,
+        vec![(map.fetch("D"), NodeStatus::Resolved(Resolution::Finished)),]
+    );
+
+    resolver
+        .send((map.fetch("B"), Resolution::Finished))
+        .unwrap();
+    orchestrator.tick().unwrap();
+
+    let events = orchestrator.drain_events();
+    assert_eq!(
+        events,
+        vec![
+            (map.fetch("B"), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch("E"), NodeStatus::Started),
+        ]
+    );
+
+    resolver
+        .send((map.fetch("E"), Resolution::Finished))
+        .unwrap();
+    orchestrator.tick().unwrap();
+
+    let events = orchestrator.drain_events();
+    assert_eq!(
+        events,
+        vec![
+            (map.fetch("E"), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch("F"), NodeStatus::Started),
+        ]
+    );
+
+    resolver
+        .send((map.fetch("F"), Resolution::Finished))
+        .unwrap();
+    orchestrator.tick().unwrap();
+
+    let events = orchestrator.drain_events();
+    assert_eq!(
+        events,
+        vec![(map.fetch("F"), NodeStatus::Resolved(Resolution::Finished)),]
+    );
+
+    let is_complete = orchestrator.tick().unwrap();
+    assert!(
+        !is_complete,
+        "Loop schedule resets instead of exiting execution"
+    );
+
+    let events = orchestrator.drain_events();
+    assert_eq!(events, vec![(map.fetch("A"), NodeStatus::Started),]);
+}
+
 trait Mapping<K, V> {
     fn fetch(&self, key: K) -> V;
 }
@@ -775,10 +971,76 @@ fn drain_commands(reactor: &mut Reactor, commands: Arc<Mutex<Vec<(NodeId, Resolu
     }
 }
 
-fn map_nodes(reactor: &Reactor) -> HashMap<&'static str, NodeId> {
+#[test]
+fn orchestrator_multiple_roots() {
+    declare_tags!(RootX, RootY, BarrierNode);
+
+    #[graph(
+        RootX -> b: BarrierNode;
+        RootY -> [b];
+    )]
+    struct ParallelRootsGraph;
+
+    let mut orchestrator =
+        Orchestrator::new(ParallelRootsGraph, ScheduleConfig { should_loop: false }).unwrap();
+    let map = map_nodes(orchestrator.node_meta().as_slice());
+
+    orchestrator.start().unwrap();
+    orchestrator.tick().unwrap();
+
+    let events = orchestrator.drain_events();
+    assert_eq!(
+        events,
+        vec![
+            (map.fetch("RootX"), NodeStatus::Started),
+            (map.fetch("RootY"), NodeStatus::Started),
+        ]
+    );
+}
+
+#[test]
+fn orchestrator_no_loop_termination() {
+    declare_tags!(X, Y);
+
+    #[graph(X -> Y)]
+    struct Graph;
+
+    let mut orchestrator = Orchestrator::new(Graph, ScheduleConfig { should_loop: false }).unwrap();
+    let resolver = orchestrator.resolver();
+    let map = map_nodes(orchestrator.node_meta().as_slice());
+
+    orchestrator.start().unwrap();
+
+    orchestrator.tick().unwrap();
+    orchestrator.drain_events();
+    resolver
+        .send((map.fetch("X"), Resolution::Finished))
+        .unwrap();
+
+    orchestrator.tick().unwrap();
+    orchestrator.drain_events();
+    resolver
+        .send((map.fetch("Y"), Resolution::Finished))
+        .unwrap();
+
+    orchestrator.tick().unwrap();
+    let subsequent_events = orchestrator.drain_events();
+    assert_eq!(
+        subsequent_events,
+        vec![(map.fetch("Y"), NodeStatus::Resolved(Resolution::Finished))]
+    );
+
+    let is_complete = orchestrator.tick().unwrap();
+    assert!(
+        is_complete,
+        "Orchestrator must return true signaling the schedule is over"
+    );
+}
+
+fn map_nodes(node_meta: &[(NodeId, &Meta)]) -> HashMap<&'static str, NodeId> {
     let mut s2i = HashMap::new();
-    for (id, meta) in reactor.node_meta() {
-        s2i.insert(meta.type_name(), id);
+    for (id, meta) in node_meta {
+        s2i.insert(meta.type_name(), *id);
     }
 
     s2i

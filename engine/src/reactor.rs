@@ -96,9 +96,9 @@ impl Reactor {
     /// - will error [ReactorError::MissingListener] if some node does not have registered [Listener]
     /// to receive control over schedule advancement.
     pub fn resolve(&mut self, id: NodeId, resolution: Resolution) -> Result<bool, ReactorError> {
-        let (is_complete, node_statuses) = self.schedule.advance(&self.graph, id, resolution);
+        let (is_complete, node_payload) = self.schedule.advance(&self.graph, id, resolution);
 
-        for (id, event) in node_statuses {
+        for (id, event) in node_payload {
             self.notify(id, event)?;
         }
 

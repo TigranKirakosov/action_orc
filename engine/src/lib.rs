@@ -1,10 +1,18 @@
+#[cfg(feature = "orchestrator")]
+mod orchestrator;
 mod reactor;
 mod schedule;
 
+use action_orc_core::NodeId;
+#[cfg(feature = "orchestrator")]
+pub use orchestrator::*;
 pub use reactor::*;
 
 #[cfg(test)]
 mod tests;
+
+type NodeEvent = (NodeId, NodeStatus);
+type NodeResolution = (NodeId, Resolution);
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeStatus {

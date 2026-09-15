@@ -1,4 +1,4 @@
-use crate::{NodeStatus, Resolution};
+use crate::{NodeEvent, NodeStatus, Resolution};
 use action_orc_core::*;
 
 #[derive(Default)]
@@ -17,14 +17,14 @@ impl Schedule {
         }
     }
 
-    pub(crate) fn start(&self, graph: &Graph) -> Vec<(NodeId, NodeStatus)> {
+    pub(crate) fn start(&self, graph: &Graph) -> Vec<NodeEvent> {
         graph
             .sources()
             .map(|source| (source, NodeStatus::Started))
             .collect()
     }
 
-    pub(crate) fn restart(&mut self, graph: &Graph) -> Vec<(NodeId, NodeStatus)> {
+    pub(crate) fn restart(&mut self, graph: &Graph) -> Vec<NodeEvent> {
         let in_degree = graph.in_degree();
         self.in_degree.copy_from_slice(in_degree);
         self.finished_count = in_degree.iter().filter(|deg| **deg == 0).count();
@@ -36,13 +36,8 @@ impl Schedule {
         graph: &Graph,
         target: NodeId,
         resolution: Resolution,
-    ) -> (bool, Vec<(NodeId, NodeStatus)>) {
+    ) -> (bool, Vec<NodeEvent>) {
         let mut queue = vec![(target, NodeStatus::Resolved(resolution))];
-
-        let is_complete = self.in_degree.len() == self.finished_count;
-        if is_complete {
-            return (true, queue);
-        }
 
         // Resolve downstream nodes
         for &ds in &graph.adj()[target] {
@@ -53,6 +48,8 @@ impl Schedule {
             }
         }
 
-        (false, queue)
+        let is_complete = self.in_degree.len() == self.finished_count;
+
+        (is_complete, queue)
     }
 }
