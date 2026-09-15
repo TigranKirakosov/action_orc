@@ -21,11 +21,8 @@ impl Meta {
             type_id: TypeId::of::<T>(),
             #[cfg(any(test, feature = "visualizer"))]
             type_name: {
-                let full_name = std::any::type_name::<T>();
-                full_name
-                    .rsplit_once("::")
-                    .map(|(_, name)| name)
-                    .unwrap_or(full_name)
+                use crate::get_type_name;
+                get_type_name::<T>()
             },
         }
     }

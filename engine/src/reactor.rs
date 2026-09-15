@@ -1,4 +1,5 @@
 use action_orc_core::*;
+use std::fmt;
 use std::sync::Arc;
 use std::{any::TypeId, collections::HashMap};
 
@@ -9,6 +10,22 @@ pub enum ReactorError {
     MissingListener,
     UnknownTypeId,
 }
+
+impl fmt::Display for ReactorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        match self {
+            ReactorError::MissingListener => {
+                write!(f, "Reactor error: Missing listener registration.")
+            }
+            ReactorError::UnknownTypeId => write!(
+                f,
+                "Reactor error: Attempted to process an unknown TypeId layout."
+            ),
+        }
+    }
+}
+
+impl std::error::Error for ReactorError {}
 
 #[derive(Default)]
 pub struct Reactor {
@@ -35,7 +52,7 @@ impl Reactor {
 
     /// Start underlying [Schedule] and notify [Listener]s which nodes
     /// have started, that is, received control over schedule advancement.
-    pub fn init(&mut self) -> Result<(), ReactorError> {
+    pub fn start(&mut self) -> Result<(), ReactorError> {
         for (node, status) in self.schedule.start(&self.graph) {
             self.notify(node, status)?;
         }
@@ -43,10 +60,15 @@ impl Reactor {
         Ok(())
     }
 
-    pub fn reset(&mut self) {
-        self.schedule
-            .in_degree
-            .copy_from_slice(self.graph.in_degree());
+    /// Resets underlying [Schedule] to defaults and does the sames as [Self::init]
+    pub fn restart(&mut self) -> Result<(), ReactorError> {
+        self.schedule.restart(&self.graph);
+
+        for (node, status) in self.schedule.start(&self.graph) {
+            self.notify(node, status)?;
+        }
+
+        Ok(())
     }
 
     /// Register [Listener] for [TypeId] lifecycle statuses.
@@ -70,17 +92,17 @@ impl Reactor {
     }
 
     /// Communicate node resolution status to advance underlying [Schedule].
-    ///
-    /// Will return [ReactorError::MissingListener] if some node does not have registered [Listener]
+    /// - will return true to signify [Schedule] is over
+    /// - will error [ReactorError::MissingListener] if some node does not have registered [Listener]
     /// to receive control over schedule advancement.
-    pub fn resolve(&mut self, id: NodeId, resolution: Resolution) -> Result<(), ReactorError> {
-        let node_statuses = self.schedule.advance(&self.graph, id, resolution);
+    pub fn resolve(&mut self, id: NodeId, resolution: Resolution) -> Result<bool, ReactorError> {
+        let (is_complete, node_statuses) = self.schedule.advance(&self.graph, id, resolution);
 
         for (id, event) in node_statuses {
             self.notify(id, event)?;
         }
 
-        Ok(())
+        Ok(is_complete)
     }
 
     /// An ordered mapping of underlying graph [NodeId]s to respective [Meta]

@@ -238,7 +238,7 @@ fn lifecycle_hooks() {
         .unwrap();
     assert_eq!(*log.lock().unwrap(), vec![]);
 
-    reactor.init().unwrap();
+    reactor.start().unwrap();
     assert_eq!(
         *log.lock().unwrap(),
         vec![(map.fetch("A"), NodeStatus::Started)]
@@ -336,7 +336,7 @@ fn nested_pipeline_composition() {
         })
         .unwrap();
 
-    reactor.init().unwrap();
+    reactor.start().unwrap();
     for id in &["Enter", "SpawnEnemies", "Fight", "RollLoot"] {
         reactor
             .resolve(map.fetch(id), Resolution::Finished)
@@ -396,7 +396,7 @@ fn nested_pipeline_composition_macro() {
         })
         .unwrap();
 
-    reactor.init().unwrap();
+    reactor.start().unwrap();
     for id in &["Enter", "SpawnEnemies", "Fight", "RollLoot"] {
         reactor
             .resolve(map.fetch(id), Resolution::Finished)
@@ -608,7 +608,7 @@ fn struct_expression() {
     };
     mock_listeners!(reactor, listener, R, A, B, X, Y, X1, Y1);
 
-    reactor.init().unwrap();
+    reactor.start().unwrap();
     drain_commands(&mut reactor, commands);
 
     let log = log.lock().unwrap().clone();
@@ -683,7 +683,7 @@ fn struct_expression_attribute_macro() {
     };
     mock_listeners!(reactor, listener, R, A, B, X, Y, X1, Y1, O, K);
 
-    reactor.init().unwrap();
+    reactor.start().unwrap();
     drain_commands(&mut reactor, commands);
 
     let log = log.lock().unwrap().clone();
@@ -732,7 +732,7 @@ fn unit_struct_expression_derive_macro() {
     };
     mock_listeners!(reactor, listener, A, B, X, Y);
 
-    reactor.init().unwrap();
+    reactor.start().unwrap();
     drain_commands(&mut reactor, commands);
 
     let log = log.lock().unwrap().clone();
