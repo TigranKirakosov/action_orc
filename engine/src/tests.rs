@@ -761,9 +761,9 @@ fn orchestrator_schedule_loop() {
 
     orchestrator.start().unwrap();
 
-    let is_complete = orchestrator.tick().unwrap();
+    let schedule_state = orchestrator.tick().unwrap();
     assert!(
-        !is_complete,
+        schedule_state == ScheduleState::Active,
         "Schedule should not be marked done while threads are processing"
     );
 
@@ -774,8 +774,8 @@ fn orchestrator_schedule_loop() {
         .send((map.fetch("A"), Resolution::Finished))
         .unwrap();
 
-    let is_complete = orchestrator.tick().unwrap();
-    assert!(!is_complete);
+    let schedule_state = orchestrator.tick().unwrap();
+    assert!(schedule_state == ScheduleState::Active);
 
     let wave_2_events = orchestrator.drain_events();
     assert_eq!(
@@ -811,9 +811,9 @@ fn orchestrator_schedule_loop() {
         vec![(map.fetch("C"), NodeStatus::Resolved(Resolution::Finished)),]
     );
 
-    let is_complete = orchestrator.tick().unwrap();
+    let schedule_state = orchestrator.tick().unwrap();
     assert!(
-        !is_complete,
+        schedule_state == ScheduleState::Restarted,
         "Loop schedule resets instead of exiting execution"
     );
 
@@ -847,8 +847,8 @@ fn orchestrator_topological_correctness() {
 
     orchestrator.start().unwrap();
 
-    let is_complete = orchestrator.tick().unwrap();
-    assert!(!is_complete);
+    let schedule_state = orchestrator.tick().unwrap();
+    assert!(schedule_state == ScheduleState::Active);
 
     let events = orchestrator.drain_events();
     assert_eq!(events, vec![(map.fetch("A"), NodeStatus::Started)]);
@@ -933,9 +933,9 @@ fn orchestrator_topological_correctness() {
         vec![(map.fetch("F"), NodeStatus::Resolved(Resolution::Finished)),]
     );
 
-    let is_complete = orchestrator.tick().unwrap();
+    let schedule_state = orchestrator.tick().unwrap();
     assert!(
-        !is_complete,
+        schedule_state == ScheduleState::Restarted,
         "Loop schedule resets instead of exiting execution"
     );
 
@@ -1030,11 +1030,8 @@ fn orchestrator_no_loop_termination() {
         vec![(map.fetch("Y"), NodeStatus::Resolved(Resolution::Finished))]
     );
 
-    let is_complete = orchestrator.tick().unwrap();
-    assert!(
-        is_complete,
-        "Orchestrator must return true signaling the schedule is over"
-    );
+    let schedule_state = orchestrator.tick().unwrap();
+    assert!(ScheduleState::Ended == schedule_state,);
 }
 
 fn map_nodes(node_meta: &[(NodeId, &Meta)]) -> HashMap<&'static str, NodeId> {

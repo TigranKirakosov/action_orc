@@ -22,15 +22,33 @@ impl Listener for EventQueue {
     }
 }
 
+#[derive(Clone)]
+pub enum LoopDirective {
+    Maintain,
+    Break,
+}
+
+#[derive(Clone)]
+pub struct ScheduleDirectives {
+    pub loop_directive: Option<LoopDirective>,
+}
+
 pub struct ScheduleConfig {
     pub should_loop: bool,
+}
+
+#[derive(PartialEq)]
+pub enum ScheduleState {
+    Active,
+    Ended,
+    Restarted,
 }
 
 pub struct Orchestrator {
     reactor: Reactor,
     event_queue: EventQueue,
     resolution_tx: Sender<NodeResolution>,
-    resolution_rx: Receiver<NodeResolution>,
+    resolution_rx: Mutex<Receiver<NodeResolution>>,
     schedule_config: ScheduleConfig,
     /// Indicates count of currently processing events by outside world
     in_flight: usize,
@@ -42,6 +60,7 @@ impl Orchestrator {
         schedule_config: ScheduleConfig,
     ) -> Result<Self, ReactorError> {
         let (resolution_tx, resolution_rx) = channel();
+        let resolution_rx = Mutex::new(resolution_rx);
         let event_queue = EventQueue::default();
         let mut reactor = Reactor::from(graph);
 
@@ -83,10 +102,12 @@ impl Orchestrator {
     }
 
     /// Must be polled
-    pub fn tick(&mut self) -> Result<bool, ReactorError> {
-        let mut schedule_complete = false;
+    pub fn tick(&mut self) -> Result<ScheduleState, ReactorError> {
+        let Ok(queue) = self.resolution_rx.lock() else {
+            return Ok(ScheduleState::Active);
+        };
 
-        for (id, resolution) in self.resolution_rx.try_iter() {
+        for (id, resolution) in queue.try_iter() {
             self.reactor.resolve(id, resolution)?;
             self.in_flight = self.in_flight.saturating_sub(1);
         }
@@ -99,15 +120,15 @@ impl Orchestrator {
             .unwrap_or(false);
 
         if self.in_flight == 0 && queue_is_empty {
-            if self.schedule_config.should_loop {
+            return if self.schedule_config.should_loop {
                 self.reactor.restart()?;
-                schedule_complete = false;
+                Ok(ScheduleState::Restarted)
             } else {
-                schedule_complete = true;
-            }
+                Ok(ScheduleState::Ended)
+            };
         }
 
-        Ok(schedule_complete)
+        Ok(ScheduleState::Active)
     }
 
     /// Eagerly drains all currently available chronological events.
@@ -127,6 +148,16 @@ impl Orchestrator {
         }
 
         elements
+    }
+
+    pub fn config_schedule(&mut self, directives: &ScheduleDirectives) {
+        if let Some(loop_directive) = &directives.loop_directive {
+            let should_loop = match loop_directive {
+                LoopDirective::Maintain => true,
+                LoopDirective::Break => false,
+            };
+            self.schedule_config.should_loop = should_loop;
+        }
     }
 
     /// An ordered mapping of underlying graph [NodeId]s to respective [Meta]
