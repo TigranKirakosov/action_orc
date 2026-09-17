@@ -16,6 +16,7 @@ use action_orc_core::*;
 ///
 /// `(A : B) -> (Z | W)`
 /// - Z and W run in parallel; letting either node backtrack independently would corrupt the peer's active execution state
+#[derive(Clone, Copy)]
 pub enum ScheduleDirective {
     Advance { pivot: NodeId },
     SelectiveAdvance { pivot: NodeId, target: NodeId },

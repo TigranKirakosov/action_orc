@@ -7,16 +7,16 @@ use action_orc_core::NodeId;
 #[cfg(feature = "orchestrator")]
 pub use orchestrator::*;
 pub use reactor::*;
-
-use crate::schedule::ScheduleDirective;
+pub use schedule::ScheduleDirective;
 
 #[cfg(test)]
 mod tests;
 
 type NodeEvent = (NodeId, NodeStatus);
 
+#[derive(Clone, Copy)]
 pub struct NodeCommand {
-    schedule_directive: ScheduleDirective,
+    pub schedule_directive: ScheduleDirective,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]

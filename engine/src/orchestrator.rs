@@ -22,19 +22,16 @@ impl Listener for EventQueue {
     }
 }
 
-#[derive(Clone)]
-pub enum LoopDirective {
-    Loop,
-    Break,
-}
-
-#[derive(Clone)]
-pub struct ScheduleDirectives {
-    pub loop_directive: Option<LoopDirective>,
-}
-
 pub struct Config {
     pub loop_schedule: bool,
+}
+
+impl Default for Config {
+    fn default() -> Self {
+        Self {
+            loop_schedule: false,
+        }
+    }
 }
 
 #[derive(PartialEq)]
@@ -152,14 +149,8 @@ impl Orchestrator {
         elements
     }
 
-    pub fn config_schedule(&mut self, directives: &ScheduleDirectives) {
-        if let Some(loop_directive) = &directives.loop_directive {
-            let loop_schedule = match loop_directive {
-                LoopDirective::Loop => true,
-                LoopDirective::Break => false,
-            };
-            self.config.loop_schedule = loop_schedule;
-        }
+    pub fn config_schedule_mut(&mut self) -> &mut Config {
+        &mut self.config
     }
 
     /// An ordered mapping of underlying graph [NodeId]s to respective [Meta]
