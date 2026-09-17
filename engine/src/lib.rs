@@ -8,11 +8,16 @@ use action_orc_core::NodeId;
 pub use orchestrator::*;
 pub use reactor::*;
 
+use crate::schedule::ScheduleDirective;
+
 #[cfg(test)]
 mod tests;
 
 type NodeEvent = (NodeId, NodeStatus);
-type NodeResolution = (NodeId, Resolution);
+
+pub struct NodeCommand {
+    schedule_directive: ScheduleDirective,
+}
 
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum NodeStatus {
@@ -25,4 +30,5 @@ pub enum NodeStatus {
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub enum Resolution {
     Finished,
+    Reset,
 }

@@ -3,7 +3,8 @@ use std::fmt;
 use std::sync::Arc;
 use std::{any::TypeId, collections::HashMap};
 
-use crate::{NodeStatus, Resolution, schedule::Schedule};
+use crate::NodeCommand;
+use crate::{NodeStatus, schedule::Schedule};
 
 #[derive(Debug)]
 pub enum ReactorError {
@@ -29,7 +30,6 @@ impl std::error::Error for ReactorError {}
 
 #[derive(Default)]
 pub struct Reactor {
-    pub(crate) graph: Graph,
     pub(crate) schedule: Schedule,
     pub(crate) listeners: HashMap<TypeId, Vec<Box<dyn Listener>>>,
 }
@@ -41,11 +41,10 @@ impl Reactor {
     /// and will treat it as a static blueprint for underlying [Schedule].
     pub fn from<'a, G: AsGraphEntryProxy<'a>>(layout: G) -> Self {
         let graph = layout.into_compiled_graph();
-        let schedule = Schedule::from(&graph);
+        let schedule = Schedule::from(graph);
 
         Self {
             schedule,
-            graph,
             listeners: HashMap::new(),
         }
     }
@@ -53,7 +52,7 @@ impl Reactor {
     /// Start underlying [Schedule] and notify [Listener]s which nodes
     /// have started, that is, received control over schedule advancement.
     pub fn start(&mut self) -> Result<(), ReactorError> {
-        for (node, status) in self.schedule.start(&self.graph) {
+        for (node, status) in self.schedule.start() {
             self.notify(node, status)?;
         }
 
@@ -62,9 +61,7 @@ impl Reactor {
 
     /// Resets underlying [Schedule] to defaults and does the sames as [Self::init]
     pub fn restart(&mut self) -> Result<(), ReactorError> {
-        self.schedule.restart(&self.graph);
-
-        for (node, status) in self.schedule.start(&self.graph) {
+        for (node, status) in self.schedule.restart() {
             self.notify(node, status)?;
         }
 
@@ -79,7 +76,12 @@ impl Reactor {
         type_id: TypeId,
         listener: impl Listener,
     ) -> Result<(), ReactorError> {
-        let type_exists = self.graph.meta().iter().any(|m| *m.type_id() == type_id);
+        let type_exists = self
+            .schedule
+            .graph
+            .meta()
+            .iter()
+            .any(|m| *m.type_id() == type_id);
         if !type_exists {
             return Err(ReactorError::UnknownTypeId);
         }
@@ -91,27 +93,27 @@ impl Reactor {
         Ok(())
     }
 
-    /// Communicate node resolution status to advance underlying [Schedule].
-    /// - will return true to signify [Schedule] is over
-    /// - will error [ReactorError::MissingListener] if some node does not have registered [Listener]
+    /// Evaluates node command.
+    ///
+    /// Will error [ReactorError::MissingListener] if some node does not have registered [Listener]
     /// to receive control over schedule advancement.
-    pub fn resolve(&mut self, id: NodeId, resolution: Resolution) -> Result<bool, ReactorError> {
-        let (is_complete, node_payload) = self.schedule.advance(&self.graph, id, resolution);
+    pub fn resolve(&mut self, command: NodeCommand) -> Result<bool, ReactorError> {
+        let (state, node_payload) = self.schedule.process(command.schedule_directive);
 
         for (id, event) in node_payload {
             self.notify(id, event)?;
         }
 
-        Ok(is_complete)
+        Ok(state)
     }
 
     /// An ordered mapping of underlying graph [NodeId]s to respective [Meta]
     pub fn node_meta(&self) -> Vec<(NodeId, &Meta)> {
-        self.graph.meta().iter().enumerate().collect()
+        self.schedule.graph.meta().iter().enumerate().collect()
     }
 
     fn notify(&self, id: NodeId, event: NodeStatus) -> Result<(), ReactorError> {
-        let meta = &self.graph.meta()[id];
+        let meta = &self.schedule.graph.meta()[id];
 
         let typed_observers = self
             .listeners

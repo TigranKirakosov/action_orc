@@ -9,7 +9,7 @@ use std::{
 
 use action_orc_core::{AsGraphEntryProxy, Meta, NodeId};
 
-use crate::{Listener, NodeEvent, NodeResolution, NodeStatus, Reactor, ReactorError};
+use crate::{Listener, NodeCommand, NodeEvent, NodeStatus, Reactor, ReactorError};
 
 #[derive(Default, Clone)]
 struct EventQueue(Arc<Mutex<VecDeque<NodeEvent>>>);
@@ -24,7 +24,7 @@ impl Listener for EventQueue {
 
 #[derive(Clone)]
 pub enum LoopDirective {
-    Maintain,
+    Loop,
     Break,
 }
 
@@ -33,23 +33,27 @@ pub struct ScheduleDirectives {
     pub loop_directive: Option<LoopDirective>,
 }
 
-pub struct ScheduleConfig {
-    pub should_loop: bool,
+pub struct Config {
+    pub loop_schedule: bool,
 }
 
 #[derive(PartialEq)]
-pub enum ScheduleState {
+pub enum State {
     Active,
     Ended,
     Restarted,
 }
 
+struct CommandsChannel {
+    tx: Sender<NodeCommand>,
+    rx: Mutex<Receiver<NodeCommand>>,
+}
+
 pub struct Orchestrator {
     reactor: Reactor,
     event_queue: EventQueue,
-    resolution_tx: Sender<NodeResolution>,
-    resolution_rx: Mutex<Receiver<NodeResolution>>,
-    schedule_config: ScheduleConfig,
+    commands_channel: CommandsChannel,
+    config: Config,
     /// Indicates count of currently processing events by outside world
     in_flight: usize,
 }
@@ -57,10 +61,9 @@ pub struct Orchestrator {
 impl Orchestrator {
     pub fn new<'a, G: AsGraphEntryProxy<'a>>(
         graph: G,
-        schedule_config: ScheduleConfig,
+        config: Config,
     ) -> Result<Self, ReactorError> {
-        let (resolution_tx, resolution_rx) = channel();
-        let resolution_rx = Mutex::new(resolution_rx);
+        let commands_channel = CommandsChannel::new();
         let event_queue = EventQueue::default();
         let mut reactor = Reactor::from(graph);
 
@@ -76,11 +79,10 @@ impl Orchestrator {
 
         Ok(Self {
             reactor,
+            commands_channel,
             event_queue,
-            resolution_tx,
-            resolution_rx,
-            schedule_config,
             in_flight: 0,
+            config,
         })
     }
 
@@ -88,9 +90,9 @@ impl Orchestrator {
         self.reactor.start()
     }
 
-    /// Handle for writing node resolutions into [Orchestrator]
-    pub fn resolver(&self) -> Sender<NodeResolution> {
-        self.resolution_tx.clone()
+    /// Handle for writing node commands into [Orchestrator]
+    pub fn resolver(&self) -> Sender<NodeCommand> {
+        self.commands_channel.tx.clone()
     }
 
     pub fn register_listener(
@@ -102,13 +104,13 @@ impl Orchestrator {
     }
 
     /// Must be polled
-    pub fn tick(&mut self) -> Result<ScheduleState, ReactorError> {
-        let Ok(queue) = self.resolution_rx.lock() else {
-            return Ok(ScheduleState::Active);
+    pub fn tick(&mut self) -> Result<State, ReactorError> {
+        let Ok(queue) = self.commands_channel.rx.lock() else {
+            return Ok(State::Active);
         };
 
-        for (id, resolution) in queue.try_iter() {
-            self.reactor.resolve(id, resolution)?;
+        for command in queue.try_iter() {
+            self.reactor.resolve(command)?;
             self.in_flight = self.in_flight.saturating_sub(1);
         }
 
@@ -120,15 +122,15 @@ impl Orchestrator {
             .unwrap_or(false);
 
         if self.in_flight == 0 && queue_is_empty {
-            return if self.schedule_config.should_loop {
+            return if self.config.loop_schedule {
                 self.reactor.restart()?;
-                Ok(ScheduleState::Restarted)
+                Ok(State::Restarted)
             } else {
-                Ok(ScheduleState::Ended)
+                Ok(State::Ended)
             };
         }
 
-        Ok(ScheduleState::Active)
+        Ok(State::Active)
     }
 
     /// Eagerly drains all currently available chronological events.
@@ -152,16 +154,24 @@ impl Orchestrator {
 
     pub fn config_schedule(&mut self, directives: &ScheduleDirectives) {
         if let Some(loop_directive) = &directives.loop_directive {
-            let should_loop = match loop_directive {
-                LoopDirective::Maintain => true,
+            let loop_schedule = match loop_directive {
+                LoopDirective::Loop => true,
                 LoopDirective::Break => false,
             };
-            self.schedule_config.should_loop = should_loop;
+            self.config.loop_schedule = loop_schedule;
         }
     }
 
     /// An ordered mapping of underlying graph [NodeId]s to respective [Meta]
     pub fn node_meta(&self) -> Vec<(NodeId, &Meta)> {
         self.reactor.node_meta()
+    }
+}
+
+impl CommandsChannel {
+    fn new() -> Self {
+        let (tx, rx) = channel();
+        let rx = Mutex::new(rx);
+        Self { tx, rx }
     }
 }

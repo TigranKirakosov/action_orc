@@ -241,47 +241,41 @@ fn lifecycle_hooks() {
     reactor.start().unwrap();
     assert_eq!(
         *log.lock().unwrap(),
-        vec![(map.fetch("A"), NodeStatus::Started)]
+        vec![(map.fetch(A), NodeStatus::Started)]
     );
 
-    reactor
-        .resolve(map.fetch("A"), Resolution::Finished)
-        .unwrap();
+    reactor.resolve(advance_node(map.fetch(A))).unwrap();
     assert_eq! {
         *log.lock().unwrap(),
         vec![
-            (map.fetch("A"), NodeStatus::Started),
-            (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("B"), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(B), NodeStatus::Started),
         ]
     };
 
-    reactor
-        .resolve(map.fetch("B"), Resolution::Finished)
-        .unwrap();
+    reactor.resolve(advance_node(map.fetch(B))).unwrap();
     assert_eq! {
         *log.lock().unwrap(),
         vec![
-            (map.fetch("A"), NodeStatus::Started),
-            (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("B"), NodeStatus::Started),
-            (map.fetch("B"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("C"), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(B), NodeStatus::Started),
+            (map.fetch(B), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(C), NodeStatus::Started),
         ]
     };
 
-    reactor
-        .resolve(map.fetch("C"), Resolution::Finished)
-        .unwrap();
+    reactor.resolve(advance_node(map.fetch(C))).unwrap();
     assert_eq! {
         *log.lock().unwrap(),
         vec![
-            (map.fetch("A"), NodeStatus::Started),
-            (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("B"), NodeStatus::Started),
-            (map.fetch("B"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("C"), NodeStatus::Started),
-            (map.fetch("C"), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(A), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(B), NodeStatus::Started),
+            (map.fetch(B), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(C), NodeStatus::Started),
+            (map.fetch(C), NodeStatus::Resolved(Resolution::Finished)),
         ]
     };
 }
@@ -338,19 +332,17 @@ fn nested_pipeline_composition() {
 
     reactor.start().unwrap();
     for id in &["Enter", "SpawnEnemies", "Fight", "RollLoot"] {
-        reactor
-            .resolve(map.fetch(id), Resolution::Finished)
-            .unwrap();
+        reactor.resolve(advance_node(map.fetch(*id))).unwrap();
     }
 
     assert!(log.lock().unwrap().is_empty(), "Exit blocked");
     reactor
-            .resolve(map.fetch("PickTreasure"), Resolution::Finished)
+            .resolve(advance_node(map.fetch(PickTreasure)))
             .unwrap() // last task before Exit
     ;
     assert_eq!(
         *log.lock().unwrap(),
-        vec![(map.fetch("Exit"), NodeStatus::Started)]
+        vec![(map.fetch(Exit), NodeStatus::Started)]
     );
 }
 
@@ -398,19 +390,17 @@ fn nested_pipeline_composition_macro() {
 
     reactor.start().unwrap();
     for id in &["Enter", "SpawnEnemies", "Fight", "RollLoot"] {
-        reactor
-            .resolve(map.fetch(id), Resolution::Finished)
-            .unwrap();
+        reactor.resolve(advance_node(map.fetch(*id))).unwrap();
     }
 
     assert!(log.lock().unwrap().is_empty(), "Exit blocked");
 
     reactor
-        .resolve(map.fetch("PickTreasure"), Resolution::Finished)
+        .resolve(advance_node(map.fetch(PickTreasure)))
         .unwrap(); // last task before Exit
     assert_eq!(
         *log.lock().unwrap(),
-        vec![(map.fetch("Exit"), NodeStatus::Started)]
+        vec![(map.fetch(Exit), NodeStatus::Started)]
     );
 }
 
@@ -599,10 +589,7 @@ fn struct_expression() {
     let listener = move |id, status| match status {
         NodeStatus::Started => {
             log_clone.lock().unwrap().push((id, status));
-            commands_clone
-                .lock()
-                .unwrap()
-                .push((id, Resolution::Finished));
+            commands_clone.lock().unwrap().push(advance_node(id));
         }
         _ => {}
     };
@@ -615,13 +602,13 @@ fn struct_expression() {
     assert_eq!(
         log,
         vec![
-            (map.fetch("A"), NodeStatus::Started),
-            (map.fetch("R"), NodeStatus::Started),
-            (map.fetch("X"), NodeStatus::Started),
-            (map.fetch("Y"), NodeStatus::Started),
-            (map.fetch("X1"), NodeStatus::Started),
-            (map.fetch("Y1"), NodeStatus::Started),
-            (map.fetch("B"), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Started),
+            (map.fetch(R), NodeStatus::Started),
+            (map.fetch(X), NodeStatus::Started),
+            (map.fetch(Y), NodeStatus::Started),
+            (map.fetch(X1), NodeStatus::Started),
+            (map.fetch(Y1), NodeStatus::Started),
+            (map.fetch(B), NodeStatus::Started),
         ]
     );
 }
@@ -674,10 +661,7 @@ fn struct_expression_attribute_macro() {
     let listener = move |id, status| match status {
         NodeStatus::Started => {
             log_clone.lock().unwrap().push((id, status));
-            commands_clone
-                .lock()
-                .unwrap()
-                .push((id, Resolution::Finished));
+            commands_clone.lock().unwrap().push(advance_node(id));
         }
         _ => {}
     };
@@ -690,15 +674,15 @@ fn struct_expression_attribute_macro() {
     assert_eq!(
         log,
         vec![
-            (map.fetch("A"), NodeStatus::Started),
-            (map.fetch("R"), NodeStatus::Started),
-            (map.fetch("X"), NodeStatus::Started),
-            (map.fetch("Y"), NodeStatus::Started),
-            (map.fetch("X1"), NodeStatus::Started),
-            (map.fetch("Y1"), NodeStatus::Started),
-            (map.fetch("O"), NodeStatus::Started),
-            (map.fetch("K"), NodeStatus::Started),
-            (map.fetch("B"), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Started),
+            (map.fetch(R), NodeStatus::Started),
+            (map.fetch(X), NodeStatus::Started),
+            (map.fetch(Y), NodeStatus::Started),
+            (map.fetch(X1), NodeStatus::Started),
+            (map.fetch(Y1), NodeStatus::Started),
+            (map.fetch(O), NodeStatus::Started),
+            (map.fetch(K), NodeStatus::Started),
+            (map.fetch(B), NodeStatus::Started),
         ]
     );
 }
@@ -723,10 +707,7 @@ fn unit_struct_expression_derive_macro() {
     let listener = move |id, status| match status {
         NodeStatus::Started => {
             log_clone.lock().unwrap().push((id, status));
-            commands_clone
-                .lock()
-                .unwrap()
-                .push((id, Resolution::Finished));
+            commands_clone.lock().unwrap().push(advance_node(id));
         }
         _ => {}
     };
@@ -739,10 +720,10 @@ fn unit_struct_expression_derive_macro() {
     assert_eq!(
         log,
         vec![
-            (map.fetch("A"), NodeStatus::Started),
-            (map.fetch("X"), NodeStatus::Started),
-            (map.fetch("Y"), NodeStatus::Started),
-            (map.fetch("B"), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Started),
+            (map.fetch(X), NodeStatus::Started),
+            (map.fetch(Y), NodeStatus::Started),
+            (map.fetch(B), NodeStatus::Started),
         ]
     );
 }
@@ -754,73 +735,73 @@ fn orchestrator_schedule_loop() {
     #[graph(A -> B -> C)]
     struct Graph;
 
-    let mut orchestrator = Orchestrator::new(Graph, ScheduleConfig { should_loop: true }).unwrap();
+    let mut orchestrator = Orchestrator::new(
+        Graph,
+        Config {
+            loop_schedule: true,
+        },
+    )
+    .unwrap();
 
     let resolver = orchestrator.resolver();
     let map = map_nodes(orchestrator.node_meta().as_slice());
 
     orchestrator.start().unwrap();
 
-    let schedule_state = orchestrator.tick().unwrap();
+    let state = orchestrator.tick().unwrap();
     assert!(
-        schedule_state == ScheduleState::Active,
+        state == State::Active,
         "Schedule should not be marked done while threads are processing"
     );
 
     let wave_1_events = orchestrator.drain_events();
-    assert_eq!(wave_1_events, vec![(map.fetch("A"), NodeStatus::Started),]);
+    assert_eq!(wave_1_events, vec![(map.fetch(A), NodeStatus::Started),]);
 
-    resolver
-        .send((map.fetch("A"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(A))).unwrap();
 
-    let schedule_state = orchestrator.tick().unwrap();
-    assert!(schedule_state == ScheduleState::Active);
+    let state = orchestrator.tick().unwrap();
+    assert!(state == State::Active);
 
     let wave_2_events = orchestrator.drain_events();
     assert_eq!(
         wave_2_events,
         vec![
-            (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("B"), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(B), NodeStatus::Started),
         ]
     );
 
-    resolver
-        .send((map.fetch("B"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(B))).unwrap();
 
     orchestrator.tick().unwrap();
     let wave_3_events = orchestrator.drain_events();
     assert_eq!(
         wave_3_events,
         vec![
-            (map.fetch("B"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("C"), NodeStatus::Started),
+            (map.fetch(B), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(C), NodeStatus::Started),
         ]
     );
 
-    resolver
-        .send((map.fetch("C"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(C))).unwrap();
 
     orchestrator.tick().unwrap();
     let wave_4_events = orchestrator.drain_events();
     assert_eq!(
         wave_4_events,
-        vec![(map.fetch("C"), NodeStatus::Resolved(Resolution::Finished)),]
+        vec![(map.fetch(C), NodeStatus::Resolved(Resolution::Finished)),]
     );
 
-    let schedule_state = orchestrator.tick().unwrap();
+    let state = orchestrator.tick().unwrap();
     assert!(
-        schedule_state == ScheduleState::Restarted,
+        state == State::Restarted,
         "Loop schedule resets instead of exiting execution"
     );
 
     let loop_reset_events = orchestrator.drain_events();
     assert_eq!(
         loop_reset_events,
-        vec![(map.fetch("A"), NodeStatus::Started),]
+        vec![(map.fetch(A), NodeStatus::Started),]
     );
 }
 
@@ -840,135 +821,101 @@ fn orchestrator_topological_correctness() {
     )]
     struct Graph;
 
-    let mut orchestrator = Orchestrator::new(Graph, ScheduleConfig { should_loop: true }).unwrap();
+    let mut orchestrator = Orchestrator::new(
+        Graph,
+        Config {
+            loop_schedule: true,
+        },
+    )
+    .unwrap();
 
     let resolver = orchestrator.resolver();
     let map = map_nodes(orchestrator.node_meta().as_slice());
 
     orchestrator.start().unwrap();
 
-    let schedule_state = orchestrator.tick().unwrap();
-    assert!(schedule_state == ScheduleState::Active);
+    let state = orchestrator.tick().unwrap();
+    assert!(state == State::Active);
 
     let events = orchestrator.drain_events();
-    assert_eq!(events, vec![(map.fetch("A"), NodeStatus::Started)]);
+    assert_eq!(events, vec![(map.fetch(A), NodeStatus::Started)]);
 
-    resolver
-        .send((map.fetch("A"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(A))).unwrap();
     orchestrator.tick().unwrap();
 
     let events = orchestrator.drain_events();
     assert_eq!(
         events,
         vec![
-            (map.fetch("A"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("B"), NodeStatus::Started),
-            (map.fetch("C"), NodeStatus::Started),
+            (map.fetch(A), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(B), NodeStatus::Started),
+            (map.fetch(C), NodeStatus::Started),
         ]
     );
 
     // TEST NON-DETERMINISM: resolve the C -> D before B finishes
-    resolver
-        .send((map.fetch("C"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(C))).unwrap();
     orchestrator.tick().unwrap();
 
     let events = orchestrator.drain_events();
     assert_eq!(
         events,
         vec![
-            (map.fetch("C"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("D"), NodeStatus::Started),
+            (map.fetch(C), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(D), NodeStatus::Started),
         ]
     );
 
-    resolver
-        .send((map.fetch("D"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(D))).unwrap();
     orchestrator.tick().unwrap();
 
     let events = orchestrator.drain_events();
     assert_eq!(
         events,
-        vec![(map.fetch("D"), NodeStatus::Resolved(Resolution::Finished)),]
+        vec![(map.fetch(D), NodeStatus::Resolved(Resolution::Finished)),]
     );
 
-    resolver
-        .send((map.fetch("B"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(B))).unwrap();
     orchestrator.tick().unwrap();
 
     let events = orchestrator.drain_events();
     assert_eq!(
         events,
         vec![
-            (map.fetch("B"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("E"), NodeStatus::Started),
+            (map.fetch(B), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(E), NodeStatus::Started),
         ]
     );
 
-    resolver
-        .send((map.fetch("E"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(E))).unwrap();
     orchestrator.tick().unwrap();
 
     let events = orchestrator.drain_events();
     assert_eq!(
         events,
         vec![
-            (map.fetch("E"), NodeStatus::Resolved(Resolution::Finished)),
-            (map.fetch("F"), NodeStatus::Started),
+            (map.fetch(E), NodeStatus::Resolved(Resolution::Finished)),
+            (map.fetch(F), NodeStatus::Started),
         ]
     );
 
-    resolver
-        .send((map.fetch("F"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(F))).unwrap();
     orchestrator.tick().unwrap();
 
     let events = orchestrator.drain_events();
     assert_eq!(
         events,
-        vec![(map.fetch("F"), NodeStatus::Resolved(Resolution::Finished)),]
+        vec![(map.fetch(F), NodeStatus::Resolved(Resolution::Finished)),]
     );
 
-    let schedule_state = orchestrator.tick().unwrap();
+    let state = orchestrator.tick().unwrap();
     assert!(
-        schedule_state == ScheduleState::Restarted,
+        state == State::Restarted,
         "Loop schedule resets instead of exiting execution"
     );
 
     let events = orchestrator.drain_events();
-    assert_eq!(events, vec![(map.fetch("A"), NodeStatus::Started),]);
-}
-
-trait Mapping<K, V> {
-    fn fetch(&self, key: K) -> V;
-}
-
-impl Mapping<&'static str, NodeId> for HashMap<&'static str, NodeId> {
-    fn fetch(&self, key: &'static str) -> NodeId {
-        let sentinel = usize::MAX;
-        self.get(key).copied().unwrap_or(sentinel)
-    }
-}
-
-fn drain_commands(reactor: &mut Reactor, commands: Arc<Mutex<Vec<(NodeId, Resolution)>>>) {
-    loop {
-        let pending: Vec<(NodeId, Resolution)> = {
-            let mut guard = commands.lock().unwrap();
-            std::mem::take(&mut *guard)
-        };
-
-        if pending.is_empty() {
-            break;
-        }
-
-        for (id, resolution) in pending {
-            let _ = reactor.resolve(id, resolution);
-        }
-    }
+    assert_eq!(events, vec![(map.fetch(A), NodeStatus::Started),]);
 }
 
 #[test]
@@ -981,8 +928,13 @@ fn orchestrator_multiple_roots() {
     )]
     struct ParallelRootsGraph;
 
-    let mut orchestrator =
-        Orchestrator::new(ParallelRootsGraph, ScheduleConfig { should_loop: false }).unwrap();
+    let mut orchestrator = Orchestrator::new(
+        ParallelRootsGraph,
+        Config {
+            loop_schedule: false,
+        },
+    )
+    .unwrap();
     let map = map_nodes(orchestrator.node_meta().as_slice());
 
     orchestrator.start().unwrap();
@@ -992,8 +944,8 @@ fn orchestrator_multiple_roots() {
     assert_eq!(
         events,
         vec![
-            (map.fetch("RootX"), NodeStatus::Started),
-            (map.fetch("RootY"), NodeStatus::Started),
+            (map.fetch(RootX), NodeStatus::Started),
+            (map.fetch(RootY), NodeStatus::Started),
         ]
     );
 }
@@ -1005,7 +957,13 @@ fn orchestrator_no_loop_termination() {
     #[graph(X -> Y)]
     struct Graph;
 
-    let mut orchestrator = Orchestrator::new(Graph, ScheduleConfig { should_loop: false }).unwrap();
+    let mut orchestrator = Orchestrator::new(
+        Graph,
+        Config {
+            loop_schedule: false,
+        },
+    )
+    .unwrap();
     let resolver = orchestrator.resolver();
     let map = map_nodes(orchestrator.node_meta().as_slice());
 
@@ -1014,24 +972,60 @@ fn orchestrator_no_loop_termination() {
     orchestrator.tick().unwrap();
     orchestrator.drain_events();
     resolver
-        .send((map.fetch("X"), Resolution::Finished))
+        .send(NodeCommand {
+            schedule_directive: ScheduleDirective::Advance {
+                pivot: map.fetch(X),
+            },
+        })
         .unwrap();
 
     orchestrator.tick().unwrap();
     orchestrator.drain_events();
-    resolver
-        .send((map.fetch("Y"), Resolution::Finished))
-        .unwrap();
+    resolver.send(advance_node(map.fetch(Y))).unwrap();
 
     orchestrator.tick().unwrap();
     let subsequent_events = orchestrator.drain_events();
     assert_eq!(
         subsequent_events,
-        vec![(map.fetch("Y"), NodeStatus::Resolved(Resolution::Finished))]
+        vec![(map.fetch(Y), NodeStatus::Resolved(Resolution::Finished))]
     );
 
-    let schedule_state = orchestrator.tick().unwrap();
-    assert!(ScheduleState::Ended == schedule_state,);
+    let state = orchestrator.tick().unwrap();
+    assert!(State::Ended == state);
+}
+
+fn advance_node(node: NodeId) -> NodeCommand {
+    NodeCommand {
+        schedule_directive: ScheduleDirective::Advance { pivot: node },
+    }
+}
+
+fn drain_commands(reactor: &mut Reactor, commands: Arc<Mutex<Vec<NodeCommand>>>) {
+    loop {
+        let pending: Vec<NodeCommand> = {
+            let mut guard = commands.lock().unwrap();
+            std::mem::take(&mut *guard)
+        };
+
+        if pending.is_empty() {
+            break;
+        }
+
+        for command in pending {
+            let _ = reactor.resolve(command);
+        }
+    }
+}
+
+trait Mapping<V> {
+    fn fetch(&self, key: impl Into<&'static str>) -> V;
+}
+
+impl Mapping<NodeId> for HashMap<&'static str, NodeId> {
+    fn fetch(&self, key: impl Into<&'static str>) -> NodeId {
+        let sentinel = usize::MAX;
+        self.get(key.into()).copied().unwrap_or(sentinel)
+    }
 }
 
 fn map_nodes(node_meta: &[(NodeId, &Meta)]) -> HashMap<&'static str, NodeId> {
@@ -1050,6 +1044,11 @@ mod local_macros {
         ($($type:ident),* $(,)?) => {
             $(
                 struct $type;
+                impl Into<&'static str> for $type {
+                    fn into(self) -> &'static str {
+                        get_type_name::<$type>()
+                    }
+                }
             )*
         };
     }
