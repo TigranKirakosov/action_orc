@@ -3,7 +3,7 @@ use super::*;
 mod selection_group;
 
 #[test]
-fn lifecycle_hooks() -> Result<(), ReactorError> {
+fn lifecycle_hooks() -> Result {
     declare_tags!(A, B, C);
 
     let g = orc!(
@@ -11,7 +11,7 @@ fn lifecycle_hooks() -> Result<(), ReactorError> {
     );
 
     let mut reactor = Reactor::from(g);
-    let map = map_nodes(reactor.node_meta().as_slice());
+    let map = reactor.map_nodes();
 
     let logger = TestLogger::new();
     let listener = logger.with_ctx(|id, status, ctx| {
@@ -19,19 +19,19 @@ fn lifecycle_hooks() -> Result<(), ReactorError> {
     });
     mock_listeners!(reactor, listener, A, B, C);
 
-    assert!(logger.log.lock().unwrap().is_empty());
+    assert!(logger.log.lock()?.is_empty());
 
     reactor.start()?;
     logger.check_log(vec![(map[A], NodeStatus::Started)]);
 
-    reactor.resolve(cmd::resolved(map[A]))?;
+    reactor.process(cmd::resolve(map[A]))?;
     logger.check_log(vec![
         (map[A], NodeStatus::Started),
         (map[A], NodeStatus::Resolved(Resolution::Finished)),
         (map[B], NodeStatus::Started),
     ]);
 
-    reactor.resolve(cmd::resolved(map[B]))?;
+    reactor.process(cmd::resolve(map[B]))?;
     logger.check_log(vec![
         (map[A], NodeStatus::Started),
         (map[A], NodeStatus::Resolved(Resolution::Finished)),
@@ -40,7 +40,7 @@ fn lifecycle_hooks() -> Result<(), ReactorError> {
         (map[C], NodeStatus::Started),
     ]);
 
-    reactor.resolve(cmd::resolved(map[C]))?;
+    reactor.process(cmd::resolve(map[C]))?;
     logger.check_log(vec![
         (map[A], NodeStatus::Started),
         (map[A], NodeStatus::Resolved(Resolution::Finished)),
@@ -54,7 +54,7 @@ fn lifecycle_hooks() -> Result<(), ReactorError> {
 }
 
 #[test]
-fn nested_pipeline_composition() -> Result<(), ReactorError> {
+fn nested_pipeline_composition() -> Result {
     declare_tags!(Enter, Exit);
     declare_tags!(SpawnEnemies, Fight);
     declare_tags!(RollLoot, PickTreasure);
@@ -84,8 +84,7 @@ fn nested_pipeline_composition() -> Result<(), ReactorError> {
     let _loot_bounds = room.merge(&loot, combat_bounds.sinks);
 
     let mut reactor = Reactor::from(room);
-
-    let map = map_nodes(reactor.node_meta().as_slice());
+    let map = reactor.map_nodes();
 
     let logger = TestLogger::new();
     let listener = logger.with_ctx(|id, status, ctx| match status {
@@ -107,19 +106,19 @@ fn nested_pipeline_composition() -> Result<(), ReactorError> {
 
     reactor.start()?;
     for id in &tags![Enter, SpawnEnemies, Fight, RollLoot] {
-        reactor.resolve(cmd::resolved(map[*id]))?;
+        reactor.process(cmd::resolve(map[*id]))?;
     }
 
-    assert!(logger.log.lock().unwrap().is_empty(), "Exit blocked");
+    assert!(logger.log.lock()?.is_empty(), "Exit blocked");
 
-    reactor.resolve(cmd::resolved(map[PickTreasure]))?; // last task before Exit
+    reactor.process(cmd::resolve(map[PickTreasure]))?; // last task before Exit
     logger.check_log(vec![(map[Exit], NodeStatus::Started)]);
 
     Ok(())
 }
 
 #[test]
-fn nested_pipeline_composition_macro() -> Result<(), ReactorError> {
+fn nested_pipeline_composition_macro() -> Result {
     declare_tags!(Enter, Exit);
     declare_tags!(SpawnEnemies, Fight);
     declare_tags!(RollLoot, PickTreasure);
@@ -141,8 +140,7 @@ fn nested_pipeline_composition_macro() -> Result<(), ReactorError> {
     let composed_room = room(&combat, &loot);
 
     let mut reactor = Reactor::from(composed_room);
-
-    let map = map_nodes(reactor.node_meta().as_slice());
+    let map = reactor.map_nodes();
 
     let logger = TestLogger::new();
     let listener = logger.with_ctx(|id, status, ctx| match status {
@@ -164,12 +162,12 @@ fn nested_pipeline_composition_macro() -> Result<(), ReactorError> {
 
     reactor.start()?;
     for id in &tags![Enter, SpawnEnemies, Fight, RollLoot] {
-        reactor.resolve(cmd::resolved(map[*id]))?;
+        reactor.process(cmd::resolve(map[*id]))?;
     }
 
-    assert!(logger.log.lock().unwrap().is_empty(), "Exit blocked");
+    assert!(logger.log.lock()?.is_empty(), "Exit blocked");
 
-    reactor.resolve(cmd::resolved(map[PickTreasure]))?; // last task before Exit
+    reactor.process(cmd::resolve(map[PickTreasure]))?; // last task before Exit
     logger.check_log(vec![(map[Exit], NodeStatus::Started)]);
 
     Ok(())
@@ -177,7 +175,7 @@ fn nested_pipeline_composition_macro() -> Result<(), ReactorError> {
 
 /// Verifies [AsGraphProxy] and '@' expression prefix work in conjuction
 #[test]
-fn struct_expression() -> Result<(), ReactorError> {
+fn struct_expression() -> Result {
     declare_tags!(R, A, B, X, Y, X1, Y1);
 
     struct Race<'a> {
@@ -214,13 +212,13 @@ fn struct_expression() -> Result<(), ReactorError> {
     let graph = composer(&x, &y);
 
     let mut reactor = Reactor::from(graph);
-    let map = map_nodes(reactor.node_meta().as_slice());
+    let map = reactor.map_nodes();
 
     let logger = TestLogger::new();
     let listener = logger.with_ctx(|id, status, ctx| match status {
         NodeStatus::Started => {
             ctx.record(id, status);
-            ctx.queue_cmd(cmd::resolved(id));
+            ctx.queue_cmd(cmd::resolve(id));
         }
         _ => {}
     });
@@ -244,7 +242,7 @@ fn struct_expression() -> Result<(), ReactorError> {
 
 /// An attribute-macro #[graph(...)] twin to [struct_expression]
 #[test]
-fn struct_expression_attribute_macro() -> Result<(), ReactorError> {
+fn struct_expression_attribute_macro() -> Result {
     declare_tags!(R, A, B, X, Y, X1, Y1, O, K);
 
     #[graph(R -> (@a | @b))]
@@ -279,13 +277,13 @@ fn struct_expression_attribute_macro() -> Result<(), ReactorError> {
         "Graph compiled without expected meta types: {missing_types:#?}"
     );
 
-    let map = map_nodes(reactor.node_meta().as_slice());
+    let map = reactor.map_nodes();
 
     let logger = TestLogger::new();
     let listener = logger.with_ctx(|id, status, ctx| match status {
         NodeStatus::Started => {
             ctx.record(id, status);
-            ctx.queue_cmd(cmd::resolved(id));
+            ctx.queue_cmd(cmd::resolve(id));
         }
         _ => {}
     });
@@ -311,20 +309,20 @@ fn struct_expression_attribute_macro() -> Result<(), ReactorError> {
 
 /// Verifies #[graph(...)] works on unit structs
 #[test]
-fn unit_struct_expression_derive_macro() -> Result<(), ReactorError> {
+fn unit_struct_expression_derive_macro() -> Result {
     declare_tags!(A, B, X, Y);
 
     #[graph(A -> (X | Y) -> B)]
     struct Unit;
 
     let mut reactor = Reactor::from(Unit);
-    let map = map_nodes(reactor.node_meta().as_slice());
+    let map = reactor.map_nodes();
 
     let logger = TestLogger::new();
     let listener = logger.with_ctx(|id, status, ctx| match status {
         NodeStatus::Started => {
             ctx.record(id, status);
-            ctx.queue_cmd(cmd::resolved(id));
+            ctx.queue_cmd(cmd::resolve(id));
         }
         _ => {}
     });

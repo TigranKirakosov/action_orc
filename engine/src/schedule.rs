@@ -38,7 +38,7 @@ pub enum ScheduleDirective {
     Backtrack,
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum SchedulerError {
     AdvanceBypass {
         pivot: NodeDisplay,
@@ -62,7 +62,7 @@ pub enum SchedulerError {
     },
 }
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub struct NodeDisplay {
     id: NodeId,
     name: &'static str,
@@ -88,10 +88,13 @@ impl Schedule {
         }
     }
 
-    pub(crate) fn start(&self) -> Vec<NodeEvent> {
+    pub(crate) fn start(&mut self) -> Vec<NodeEvent> {
         self.graph
             .sources()
-            .map(|source| (source, NodeStatus::Started))
+            .map(|source| {
+                self.history.push(source);
+                (source, NodeStatus::Started)
+            })
             .collect()
     }
 
@@ -107,7 +110,7 @@ impl Schedule {
         match directive {
             ScheduleDirective::Resolve { pivot } => {
                 let meta = &self.graph.meta()[pivot];
-                if meta.role() == Role::Selector {
+                if meta.role_us() == UpstreamRole::Selector {
                     Err(SchedulerError::AdvanceBypass {
                         pivot: NodeDisplay::from(pivot, meta),
                     })
@@ -119,8 +122,15 @@ impl Schedule {
                 let source_meta = &self.graph.meta()[pivot];
                 let target_meta = &self.graph.meta()[target];
 
-                if source_meta.role() != Role::Selector {
+                if source_meta.role_us() != UpstreamRole::Selector {
                     return Err(SchedulerError::InvalidAdvanceSource {
+                        source: NodeDisplay::from(pivot, source_meta),
+                        target: NodeDisplay::from(target, target_meta),
+                    });
+                }
+
+                if target_meta.role_ds() != DownstreamRole::SelectionBranch {
+                    return Err(SchedulerError::InvalidAdvanceTarget {
                         source: NodeDisplay::from(pivot, source_meta),
                         target: NodeDisplay::from(target, target_meta),
                     });
@@ -136,12 +146,8 @@ impl Schedule {
                 Ok(())
             }
             ScheduleDirective::Backtrack => {
-                if self.history.is_empty() {
+                if self.history.len() < 2 {
                     return Err(SchedulerError::NowhereToBacktrack);
-                }
-
-                if self.history.len() == 1 {
-                    return Ok(());
                 }
 
                 let current = *self.history.last().unwrap();
@@ -150,29 +156,27 @@ impl Schedule {
                 let parent = self.history[self.history.len() - 2];
                 let parent_meta = &self.graph.meta()[parent];
 
-                match current_meta.role() {
-                    Role::SelectionBranch => Ok(()),
-                    Role::Regular | Role::Selector => {
-                        // Backtracking into a parallel branch is ambiguous operation since
-                        // we have no clue which node a parent is, it could be anything in a complex graph
-                        // Furthermore, in a graph composed at runtime we could have unknown parallel parents
-                        // hence user backtracking into them will likely cause an undefined behaviour; forbidden
-                        if parent_meta.role() == Role::ParallelBranch {
-                            Err(SchedulerError::BacktrackToParallelBranch {
-                                from: NodeDisplay::from(current, current_meta),
-                                to: NodeDisplay::from(parent, parent_meta),
-                            })
-                        } else {
-                            Ok(())
-                        }
-                    }
-                    // Backtracking out of  parallel branch is forbidden too due to it
-                    // possibly executing at the moment
-                    Role::ParallelBranch => Err(SchedulerError::BacktrackFromParallelBranch {
+                if current_meta.role_ds() == DownstreamRole::ParallelBranch {
+                    return Err(SchedulerError::BacktrackFromParallelBranch {
                         from: NodeDisplay::from(current, current_meta),
                         to: NodeDisplay::from(parent, parent_meta),
-                    }),
+                    });
                 }
+
+                if parent_meta.role_us() == UpstreamRole::Selector
+                    && current_meta.role_ds() == DownstreamRole::SelectionBranch
+                {
+                    return Ok(());
+                }
+
+                if parent_meta.role_ds() == DownstreamRole::ParallelBranch {
+                    return Err(SchedulerError::BacktrackToParallelBranch {
+                        from: NodeDisplay::from(current, current_meta),
+                        to: NodeDisplay::from(parent, parent_meta),
+                    });
+                }
+
+                Ok(())
             }
         }
     }
@@ -195,19 +199,21 @@ impl Schedule {
                     self.in_degree[ds] = self.in_degree[ds].saturating_sub(1);
                     if self.in_degree[ds] == 0 {
                         self.finished_count += 1;
+
                         queue.push((ds, NodeStatus::Started));
+                        self.history.push(ds);
                     }
                 }
             }
             ScheduleDirective::Advance { pivot, target } => {
                 queue.push((pivot, NodeStatus::Resolved(Resolution::Finished)));
-                self.history.push(pivot);
 
                 // Topology invariant: select group in-degree is always one due to single pivot
                 // hence setting straight to 0 on pivot resolution
                 self.in_degree[target] = 0;
                 self.finished_count += 1;
                 queue.push((target, NodeStatus::Started));
+                self.history.push(target);
 
                 // Eliminate unselected routes
                 for &sibling in &self.graph.adj()[pivot] {
@@ -222,30 +228,26 @@ impl Schedule {
                 }
             }
             ScheduleDirective::Backtrack => {
-                if let Some(current) = self.history.pop() {
-                    queue.push((current, NodeStatus::Resolved(Resolution::Reset)));
+                let current = self.history.pop().expect("Guarded by validator.");
+                let &parent = self.history.last().expect("Guarded by validator");
+                self.finished_count = self.finished_count.saturating_sub(1);
+                self.in_degree[current] = self.graph.in_degree()[current];
 
-                    if let Some(&parent) = self.history.last() {
+                // Restore sibling
+                for &sibling in &self.graph.adj()[parent] {
+                    if sibling != current {
                         self.finished_count = self.finished_count.saturating_sub(1);
-                        self.in_degree[current] = self.graph.in_degree()[current];
 
-                        // Restore sibling
-                        for &sibling in &self.graph.adj()[parent] {
-                            if sibling != current {
-                                self.finished_count = self.finished_count.saturating_sub(1);
-
-                                // Sibling restored, restore downstream in-degree
-                                for &ds in &self.graph.adj()[sibling] {
-                                    self.in_degree[ds] += 1;
-                                }
-                            }
+                        // Sibling restored, restore downstream in-degree
+                        for &ds in &self.graph.adj()[sibling] {
+                            self.in_degree[ds] += 1;
                         }
-
-                        queue.push((parent, NodeStatus::Started));
-                    } else {
-                        queue.push((current, NodeStatus::Started));
                     }
                 }
+
+                queue.push((current, NodeStatus::Resolved(Resolution::Reset)));
+                queue.push((parent, NodeStatus::Started));
+                self.history.push(parent);
             }
         }
 
@@ -263,7 +265,7 @@ impl std::fmt::Display for NodeDisplay {
 }
 
 impl NodeDisplay {
-    fn from(id: NodeId, meta: &Meta) -> Self {
+    pub(crate) fn from(id: NodeId, meta: &Meta) -> Self {
         Self {
             id,
             name: meta.type_name(),
@@ -285,7 +287,7 @@ impl std::fmt::Display for SchedulerError {
             SchedulerError::InvalidAdvanceSource { source, target } => {
                 write!(
                     f,
-                    "Cannot use advance directive from standard node {source} to {target}. Use standard resolve instead."
+                    "Cannot use advance directive from regular node {source} to {target}. Use Resolve instead."
                 )
             }
             SchedulerError::InvalidAdvanceTarget { source, target } => {

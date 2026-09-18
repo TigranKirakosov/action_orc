@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Graph, GraphBounds, GraphEntry, Meta, NodeId, Role};
+use crate::{DownstreamRole, Graph, GraphBounds, GraphEntry, Meta, NodeId, UpstreamRole};
 
 pub struct GraphBuilder {
     pub(crate) meta: Vec<Meta>,
@@ -72,8 +72,26 @@ impl<'a> GraphBuilder {
         }
     }
 
-    pub fn set_topology_role(&mut self, node_id: &NodeId, role: Role) {
-        self.meta[*node_id].role = role;
+    pub fn set_upstream_role(&mut self, node_id: &NodeId, role: UpstreamRole) {
+        // TODO: move from node role tracking to edge role tracking
+        // i.e., store directed roles between connected nodes
+        // X -> (A ? B -> (C ? Y)): X::Selector for A, B and B::Selector for C, Y
+        let current_us = self.meta[*node_id].role_us;
+        if current_us == UpstreamRole::Selector {
+            return;
+        }
+        self.meta[*node_id].set_role_us(role);
+    }
+
+    pub fn set_downstream_role(&mut self, node_id: &NodeId, role: DownstreamRole) {
+        // TODO: research on how to properly finilize downstream role of a node
+        let current_ds = self.meta[*node_id].role_ds;
+        if current_ds == DownstreamRole::ParallelBranch
+            || current_ds == DownstreamRole::SelectionBranch
+        {
+            return;
+        }
+        self.meta[*node_id].set_role_ds(role);
     }
 
     pub fn build(self) -> Graph {

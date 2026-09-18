@@ -1,0 +1,5 @@
+error: Graph Error: A Selection Group member cannot be a Parallel Group.
+  --> tests/ui/fail/selection_group.rs:10:19
+   |
+10 | #[graph(X -> (A ? (B | C)) -> Y)]
+   |                   ^^^^^^^

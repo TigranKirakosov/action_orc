@@ -1,7 +1,7 @@
 use super::*;
 
 #[test]
-fn orchestrator_schedule_loop() -> Result<(), ReactorError> {
+fn orchestrator_schedule_loop() -> Result {
     declare_tags!(A, B, C);
 
     #[graph(A -> B -> C)]
@@ -15,7 +15,7 @@ fn orchestrator_schedule_loop() -> Result<(), ReactorError> {
     )?;
 
     let resolver = orchestrator.resolver();
-    let map = map_nodes(orchestrator.node_meta().as_slice());
+    let map = orchestrator.reactor.map_nodes();
 
     orchestrator.start()?;
 
@@ -28,7 +28,7 @@ fn orchestrator_schedule_loop() -> Result<(), ReactorError> {
     let wave_1_events = orchestrator.drain_events();
     assert_eq!(wave_1_events, vec![(map[A], NodeStatus::Started),]);
 
-    resolver.send(cmd::resolved(map[A])).unwrap();
+    resolver.send(cmd::resolve(map[A]))?;
 
     let state = orchestrator.tick()?;
     assert!(state == State::Active);
@@ -42,7 +42,7 @@ fn orchestrator_schedule_loop() -> Result<(), ReactorError> {
         ]
     );
 
-    resolver.send(cmd::resolved(map[B])).unwrap();
+    resolver.send(cmd::resolve(map[B]))?;
 
     orchestrator.tick()?;
     let wave_3_events = orchestrator.drain_events();
@@ -54,7 +54,7 @@ fn orchestrator_schedule_loop() -> Result<(), ReactorError> {
         ]
     );
 
-    resolver.send(cmd::resolved(map[C])).unwrap();
+    resolver.send(cmd::resolve(map[C]))?;
 
     orchestrator.tick()?;
     let wave_4_events = orchestrator.drain_events();
@@ -81,7 +81,7 @@ fn orchestrator_schedule_loop() -> Result<(), ReactorError> {
 // Topological order:
 // A, (B, C, D or C, D, B or C, B, D), E, F
 #[test]
-fn orchestrator_topological_correctness() -> Result<(), ReactorError> {
+fn orchestrator_topological_correctness() -> Result {
     declare_tags!(A, B, C, D, E, F);
 
     #[graph(
@@ -99,7 +99,7 @@ fn orchestrator_topological_correctness() -> Result<(), ReactorError> {
     )?;
 
     let resolver = orchestrator.resolver();
-    let map = map_nodes(orchestrator.node_meta().as_slice());
+    let map = orchestrator.reactor.map_nodes();
 
     orchestrator.start()?;
 
@@ -109,7 +109,7 @@ fn orchestrator_topological_correctness() -> Result<(), ReactorError> {
     let events = orchestrator.drain_events();
     assert_eq!(events, vec![(map[A], NodeStatus::Started)]);
 
-    resolver.send(cmd::resolved(map[A])).unwrap();
+    resolver.send(cmd::resolve(map[A]))?;
     orchestrator.tick()?;
 
     let events = orchestrator.drain_events();
@@ -123,7 +123,7 @@ fn orchestrator_topological_correctness() -> Result<(), ReactorError> {
     );
 
     // TEST NON-DETERMINISM: resolve the C -> D before B finishes
-    resolver.send(cmd::resolved(map[C])).unwrap();
+    resolver.send(cmd::resolve(map[C]))?;
     orchestrator.tick()?;
 
     let events = orchestrator.drain_events();
@@ -135,7 +135,7 @@ fn orchestrator_topological_correctness() -> Result<(), ReactorError> {
         ]
     );
 
-    resolver.send(cmd::resolved(map[D])).unwrap();
+    resolver.send(cmd::resolve(map[D]))?;
     orchestrator.tick()?;
 
     let events = orchestrator.drain_events();
@@ -144,7 +144,7 @@ fn orchestrator_topological_correctness() -> Result<(), ReactorError> {
         vec![(map[D], NodeStatus::Resolved(Resolution::Finished)),]
     );
 
-    resolver.send(cmd::resolved(map[B])).unwrap();
+    resolver.send(cmd::resolve(map[B]))?;
     orchestrator.tick()?;
 
     let events = orchestrator.drain_events();
@@ -156,7 +156,7 @@ fn orchestrator_topological_correctness() -> Result<(), ReactorError> {
         ]
     );
 
-    resolver.send(cmd::resolved(map[E])).unwrap();
+    resolver.send(cmd::resolve(map[E]))?;
     orchestrator.tick()?;
 
     let events = orchestrator.drain_events();
@@ -168,7 +168,7 @@ fn orchestrator_topological_correctness() -> Result<(), ReactorError> {
         ]
     );
 
-    resolver.send(cmd::resolved(map[F])).unwrap();
+    resolver.send(cmd::resolve(map[F]))?;
     orchestrator.tick()?;
 
     let events = orchestrator.drain_events();
@@ -190,7 +190,7 @@ fn orchestrator_topological_correctness() -> Result<(), ReactorError> {
 }
 
 #[test]
-fn orchestrator_multiple_roots() -> Result<(), ReactorError> {
+fn orchestrator_multiple_roots() -> Result {
     declare_tags!(RootX, RootY, BarrierNode);
 
     #[graph(
@@ -205,7 +205,7 @@ fn orchestrator_multiple_roots() -> Result<(), ReactorError> {
             loop_schedule: false,
         },
     )?;
-    let map = map_nodes(orchestrator.node_meta().as_slice());
+    let map = orchestrator.reactor.map_nodes();
 
     orchestrator.start()?;
     orchestrator.tick()?;
@@ -223,7 +223,7 @@ fn orchestrator_multiple_roots() -> Result<(), ReactorError> {
 }
 
 #[test]
-fn orchestrator_no_loop_termination() -> Result<(), ReactorError> {
+fn orchestrator_no_loop_termination() -> Result {
     declare_tags!(X, Y);
 
     #[graph(X -> Y)]
@@ -236,21 +236,19 @@ fn orchestrator_no_loop_termination() -> Result<(), ReactorError> {
         },
     )?;
     let resolver = orchestrator.resolver();
-    let map = map_nodes(orchestrator.node_meta().as_slice());
+    let map = orchestrator.reactor.map_nodes();
 
     orchestrator.start()?;
 
     orchestrator.tick()?;
     orchestrator.drain_events();
-    resolver
-        .send(NodeCommand {
-            schedule_directive: ScheduleDirective::Resolve { pivot: map[X] },
-        })
-        .unwrap();
+    resolver.send(NodeCommand {
+        schedule_directive: ScheduleDirective::Resolve { pivot: map[X] },
+    })?;
 
     orchestrator.tick()?;
     orchestrator.drain_events();
-    resolver.send(cmd::resolved(map[Y])).unwrap();
+    resolver.send(cmd::resolve(map[Y]))?;
 
     orchestrator.tick()?;
     let subsequent_events = orchestrator.drain_events();

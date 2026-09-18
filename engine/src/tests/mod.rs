@@ -1,4 +1,3 @@
-use core::*;
 use std::{
     collections::HashMap,
     ops::Deref,
@@ -18,32 +17,31 @@ mod reactor;
 mod cmd {
     use super::*;
 
-    pub fn resolved(pivot: NodeId) -> NodeCommand {
+    pub fn resolve(pivot: NodeId) -> NodeCommand {
         NodeCommand {
             schedule_directive: ScheduleDirective::Resolve { pivot },
         }
     }
 
-    pub fn advanced(pivot: NodeId, target: NodeId) -> NodeCommand {
+    pub fn advance(pivot: NodeId, target: NodeId) -> NodeCommand {
         NodeCommand {
             schedule_directive: ScheduleDirective::Advance { pivot, target },
         }
     }
 
-    pub fn backtracked() -> NodeCommand {
+    pub fn backtrack() -> NodeCommand {
         NodeCommand {
             schedule_directive: ScheduleDirective::Backtrack,
         }
     }
 }
 
-fn drain_commands(
-    reactor: &mut Reactor,
-    commands: Arc<Mutex<Vec<NodeCommand>>>,
-) -> Result<(), ReactorError> {
+type Result = testresult::TestResult;
+
+fn drain_commands(reactor: &mut Reactor, commands: Arc<Mutex<Vec<NodeCommand>>>) -> Result {
     loop {
         let pending: Vec<NodeCommand> = {
-            let mut guard = commands.lock().unwrap();
+            let mut guard = commands.lock()?;
             std::mem::take(&mut *guard)
         };
 
@@ -52,7 +50,7 @@ fn drain_commands(
         }
 
         for command in pending {
-            reactor.resolve(command)?;
+            reactor.process(command)?;
         }
     }
     Ok(())
@@ -72,10 +70,12 @@ pub struct TestCtx {
 }
 
 impl TestCtx {
+    #[track_caller]
     pub fn record(&self, id: NodeId, status: NodeStatus) {
         self.log.lock().unwrap().push((id, status));
     }
 
+    #[track_caller]
     pub fn queue_cmd(&self, cmd: NodeCommand) {
         self.commands.lock().unwrap().push(cmd);
     }
@@ -130,12 +130,14 @@ where
     }
 }
 
-fn map_nodes(node_meta: &[(NodeId, &Meta)]) -> NodeMap {
-    let mut s2i = HashMap::new();
-    for (id, meta) in node_meta {
-        s2i.insert(meta.type_name(), *id);
+impl Reactor {
+    fn map_nodes(&self) -> NodeMap {
+        let mut s2i = HashMap::new();
+        for (id, meta) in self.node_meta() {
+            s2i.insert(meta.type_name(), id);
+        }
+        NodeMap(s2i)
     }
-    NodeMap(s2i)
 }
 
 fn no_op_listener(_: usize, _: NodeStatus) {}
@@ -148,7 +150,7 @@ mod test_macros {
                 $reactor.listen_for(
                     std::any::TypeId::of::<$tag>(),
                     shared_listener.clone()
-                ).unwrap();
+                )?;
             )*
         };
     }

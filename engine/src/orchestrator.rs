@@ -47,7 +47,7 @@ struct CommandsChannel {
 }
 
 pub struct Orchestrator {
-    reactor: Reactor,
+    pub(crate) reactor: Reactor,
     event_queue: EventQueue,
     commands_channel: CommandsChannel,
     config: Config,
@@ -107,7 +107,7 @@ impl Orchestrator {
         };
 
         for command in queue.try_iter() {
-            self.reactor.resolve(command)?;
+            self.reactor.process(command)?;
             self.in_flight = self.in_flight.saturating_sub(1);
         }
 

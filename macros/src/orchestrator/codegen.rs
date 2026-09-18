@@ -1,4 +1,4 @@
-use action_orc_core::Role;
+use action_orc_core::DownstreamRole;
 #[allow(unused)]
 use action_orc_core::{Graph as OrcGraph, GraphEntry, GraphError as OrcGraphError};
 use proc_macro::TokenStream;
@@ -40,6 +40,9 @@ pub(super) enum CodegenError {
         span: Span,
     },
     MultiPivotSelector {
+        span: Span,
+    },
+    InvalidSelectionBranch {
         span: Span,
     },
     Syn(syn::Error),
@@ -111,7 +114,7 @@ impl Context {
 
                     self.links.push(quote! {
                         for sink_id in &#sink.sinks {
-                            builder.set_topology_role(sink_id, Role::Selector);
+                            builder.set_upstream_role(sink_id, UpstreamRole::Selector);
                         }
                     });
                 }
@@ -155,28 +158,40 @@ impl Context {
                 });
 
                 for graph in graphs {
+                    if mode == SchedulingMode::Selection {
+                        if let NodeExpr::Group(ref sub_group) = graph.entry {
+                            if sub_group.mode == SchedulingMode::Parallel {
+                                let span = sub_group.span_info.span;
+                                self.errors
+                                    .push(CodegenError::InvalidSelectionBranch { span });
+                            }
+                        }
+                    }
+
                     let (Source(sub_source), Sink(sub_sink)) = self.process_graph(graph);
 
                     match mode {
                         SchedulingMode::Parallel => {
                             self.links.push(quote! {
                                 for source_id in &#sub_source.sources {
-                                    builder.set_topology_role(source_id, Role::ParallelBranch);
+                                    builder.set_downstream_role(source_id, DownstreamRole::ParallelBranch);
                                 }
                             });
 
                             let node_id = self.node_id_map[&sub_source];
-                            self.compile_graph.meta_mut()[node_id].set_role(Role::ParallelBranch);
+                            self.compile_graph.meta_mut()[node_id]
+                                .set_role_ds(DownstreamRole::ParallelBranch);
                         }
                         SchedulingMode::Selection => {
                             self.links.push(quote! {
                                 for source_id in &#sub_source.sources {
-                                    builder.set_topology_role(source_id, Role::SelectionBranch);
+                                    builder.set_downstream_role(source_id, DownstreamRole::SelectionBranch);
                                 }
                             });
 
                             let node_id = self.node_id_map[&sub_source];
-                            self.compile_graph.meta_mut()[node_id].set_role(Role::SelectionBranch);
+                            self.compile_graph.meta_mut()[node_id]
+                                .set_role_ds(DownstreamRole::SelectionBranch);
                         }
                         _ => unreachable!(),
                     }
@@ -337,12 +352,12 @@ impl Context {
 
         self.compile_graph.add_edge(from_id, to_id);
 
-        let (node_role, node_in_degree) = (
-            self.compile_graph.meta()[to_id].role(),
+        let (role_ds, node_in_degree) = (
+            self.compile_graph.meta()[to_id].role_ds(),
             self.compile_graph.in_degree()[to_id],
         );
 
-        if node_role == Role::SelectionBranch && node_in_degree > 1 {
+        if role_ds == DownstreamRole::SelectionBranch && node_in_degree > 1 {
             self.errors.push(CodegenError::MultiPivotSelector { span });
         }
 
@@ -393,8 +408,12 @@ impl From<CodegenError> for syn::Error {
             ),
             CodegenError::MultiPivotSelector { span } => syn::Error::new(
                 span,
-                "Graph Error: Selection group (:) must be preceded strictly by a single selector node.\
+                "Graph Error: Selection group (?) must be preceded strictly by a single selector node.\
                 Multiple parallel parents are forbidden.",
+            ),
+            CodegenError::InvalidSelectionBranch { span } => syn::Error::new(
+                span,
+                "Graph Error: A Selection Group member cannot be a Parallel Group.",
             ),
             CodegenError::Syn(syn_err) => syn_err,
         }

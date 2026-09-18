@@ -30,14 +30,20 @@ members = [
     "engine",
     "macros",
 ]
-
 [dependencies]
 action-orc-core = { path = "core", version = "0.1.0" }
 action-orc-engine = { path = "engine", version = "0.1.0" }
 action-orc-macros = { path = "macros", version = "0.1.0" }
 
-[dev-dependencies]
+[workspace.dependencies]
+action-orc-core = { path = "core", version = "0.1.0" }
+action-orc-engine = { path = "engine", version = "0.1.0" }
+action-orc-macros = { path = "macros", version = "0.1.0" }
+testresult = "0.4.2"
 trybuild = "1.0.121"
+
+[dev-dependencies]
+trybuild.workspace = true
 
 [[test]]
 name = "compile_tests"

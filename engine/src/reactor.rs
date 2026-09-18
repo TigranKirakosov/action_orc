@@ -7,9 +7,9 @@ use crate::NodeCommand;
 use crate::schedule::SchedulerError;
 use crate::{NodeStatus, schedule::Schedule};
 
-#[derive(Debug)]
+#[derive(Debug, PartialEq)]
 pub enum ReactorError {
-    MissingListener,
+    MissingListener { type_name: &'static str },
     UnknownTypeId,
     Scheduler(SchedulerError),
 }
@@ -80,7 +80,7 @@ impl Reactor {
     }
 
     /// Evaluates node command.\
-    pub fn resolve(&mut self, command: NodeCommand) -> Result<bool, ReactorError> {
+    pub fn process(&mut self, command: NodeCommand) -> Result<bool, ReactorError> {
         let (state, node_payload) = self.schedule.process(command.schedule_directive)?;
 
         for (id, event) in node_payload {
@@ -95,13 +95,19 @@ impl Reactor {
         self.schedule.graph.meta().iter().enumerate().collect()
     }
 
+    pub fn get_meta(&self, node_id: NodeId) -> &Meta {
+        &self.schedule.graph.meta()[node_id]
+    }
+
     fn notify(&self, id: NodeId, event: NodeStatus) -> Result<(), ReactorError> {
         let meta = &self.schedule.graph.meta()[id];
 
-        let typed_observers = self
-            .listeners
-            .get(meta.type_id())
-            .ok_or(ReactorError::MissingListener)?;
+        let typed_observers =
+            self.listeners
+                .get(meta.type_id())
+                .ok_or(ReactorError::MissingListener {
+                    type_name: meta.type_name(),
+                })?;
 
         for obs in typed_observers {
             obs.notify(id, event);
@@ -137,7 +143,9 @@ impl fmt::Display for ReactorError {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "Reactor error: ",)?;
         match self {
-            ReactorError::MissingListener => write!(f, "Missing listener registration."),
+            ReactorError::MissingListener { type_name } => {
+                write!(f, "Missing listener registration for '{type_name}'")
+            }
             ReactorError::UnknownTypeId => {
                 write!(f, "Attempted to process an unknown TypeId layout.")
             }

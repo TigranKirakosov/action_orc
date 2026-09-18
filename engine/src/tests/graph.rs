@@ -23,7 +23,7 @@ fn simple_graph_macro() {
 }
 
 #[test]
-fn diamond_dependency_macro() -> Result<(), GraphError> {
+fn diamond_dependency_macro() -> Result {
     declare_tags!(A, B, C, D);
 
     let g = orc!(
@@ -54,7 +54,7 @@ fn diamond_dependency_macro() -> Result<(), GraphError> {
 /// - H: `x -> y`
 /// - Combined: `(a | b) -> x -> y -> c`
 #[test]
-fn merge_into_parallel_set_macro() -> Result<(), GraphError> {
+fn merge_into_parallel_set_macro() -> Result {
     declare_tags!(X, Y);
     declare_tags!(A, B, C);
 
@@ -82,7 +82,7 @@ fn merge_into_parallel_set_macro() -> Result<(), GraphError> {
 /// - H: `X -> Y`
 /// - Combined: `Enter -> (A | X -> Y) -> Exit`
 #[test]
-fn embed_graph_inside_parallel_group_macro() -> Result<(), GraphError> {
+fn embed_graph_inside_parallel_group_macro() -> Result {
     declare_tags!(X, Y);
     declare_tags!(Enter, A, Exit);
 
@@ -109,7 +109,7 @@ fn embed_graph_inside_parallel_group_macro() -> Result<(), GraphError> {
 }
 
 #[test]
-fn standalone_embedding_macro() -> Result<(), GraphError> {
+fn standalone_embedding_macro() -> Result {
     declare_tags!(A, B);
     let h = orc!(A -> B;);
 

@@ -15,3 +15,6 @@ orchestrator = []
 [dependencies]
 action-orc-core = { path = "../core", version = "0.1.0" }
 action-orc-macros = { path = "../macros", version = "0.1.0" }
+
+[dev-dependencies]
+testresult.workspace = true

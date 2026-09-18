@@ -176,3 +176,14 @@ impl Graph {
         (0..len).filter(|&id| self.adj[id].is_empty())
     }
 }
+
+impl std::fmt::Display for GraphError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Graph Error: ")?;
+        match self {
+            GraphError::CycleDetected => write!(f, "Detected cycle."),
+        }
+    }
+}
+
+impl std::error::Error for GraphError {}

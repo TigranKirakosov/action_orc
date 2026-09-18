@@ -7,7 +7,7 @@ use action_orc_core::NodeId;
 #[cfg(feature = "orchestrator")]
 pub use orchestrator::*;
 pub use reactor::*;
-pub use schedule::ScheduleDirective;
+pub use schedule::*;
 
 #[cfg(test)]
 mod tests;
