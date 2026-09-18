@@ -3,20 +3,69 @@ use std::str::FromStr;
 use super::*;
 
 #[test]
-fn atomic_single_task() {
-    let tokens = tokenize("a: TaskA;");
+fn declaration() {
+    let tokens = tokenize("a: A;");
     let ast = parse(tokens).unwrap();
 
     insta::assert_debug_snapshot!(ast);
 }
 
 #[test]
-fn complex_graph() {
+fn variable_binding() {
     let tokens = tokenize(
         "
-         enter: Entering -> inited: InitScene;
+        a: A;
+        [a] -> B;
+    ",
+    );
+    let ast = parse(tokens).unwrap();
 
-         [inited] -> (A | B | C) -> exit: Exiting;
+    insta::assert_debug_snapshot!(ast);
+}
+
+#[test]
+fn expression_binding() {
+    let tokens = tokenize(
+        "
+        A -> @Struct { x, y } -> B;
+    ",
+    );
+    let ast = parse(tokens).unwrap();
+
+    insta::assert_debug_snapshot!(ast);
+}
+
+#[test]
+fn sequence_group_syntax() {
+    let tokens = tokenize(
+        "
+         X -> (A -> B, C -> D) -> Y;
+     ",
+    );
+
+    let ast = parse(tokens).unwrap();
+
+    insta::assert_debug_snapshot!(ast);
+}
+
+#[test]
+fn parallel_group_syntax() {
+    let tokens = tokenize(
+        "
+         X -> (A -> B | C -> D) -> Y;
+     ",
+    );
+
+    let ast = parse(tokens).unwrap();
+
+    insta::assert_debug_snapshot!(ast);
+}
+
+#[test]
+fn selection_group_syntax() {
+    let tokens = tokenize(
+        "
+         X -> (A -> B ? C -> D) -> Y;
      ",
     );
 

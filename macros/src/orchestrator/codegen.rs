@@ -1,3 +1,4 @@
+use action_orc_core::Role;
 #[allow(unused)]
 use action_orc_core::{Graph as OrcGraph, GraphEntry, GraphError as OrcGraphError};
 use proc_macro::TokenStream;
@@ -36,6 +37,9 @@ pub(super) enum CodegenError {
     },
     VariableCollision {
         var: String,
+        span: Span,
+    },
+    MultiPivotSelector {
         span: Span,
     },
     Syn(syn::Error),
@@ -101,6 +105,18 @@ impl Context {
                 NodeExpr::Group(block) => block.span_info.span,
             };
 
+            if let NodeExpr::Group(ref block) = conn {
+                if block.mode == SchedulingMode::Selection {
+                    let Sink(sink) = &prev_sink;
+
+                    self.links.push(quote! {
+                        for sink_id in &#sink.sinks {
+                            builder.set_topology_role(sink_id, Role::Selector);
+                        }
+                    });
+                }
+            }
+
             let (sub_source, sub_sink) = self.process_node(conn);
             self.track_edge(node_span, &prev_sink, &sub_source);
 
@@ -127,7 +143,7 @@ impl Context {
 
     fn process_group(&mut self, GroupBlock { mode, graphs, .. }: GroupBlock) -> (Source, Sink) {
         match mode {
-            SchedulingMode::Parallel => {
+            SchedulingMode::Parallel | SchedulingMode::Selection => {
                 let group_id = self.parallel_group_id_counter;
                 self.parallel_group_id_counter += 1;
 
@@ -140,6 +156,30 @@ impl Context {
 
                 for graph in graphs {
                     let (Source(sub_source), Sink(sub_sink)) = self.process_graph(graph);
+
+                    match mode {
+                        SchedulingMode::Parallel => {
+                            self.links.push(quote! {
+                                for source_id in &#sub_source.sources {
+                                    builder.set_topology_role(source_id, Role::ParallelBranch);
+                                }
+                            });
+
+                            let node_id = self.node_id_map[&sub_source];
+                            self.compile_graph.meta_mut()[node_id].set_role(Role::ParallelBranch);
+                        }
+                        SchedulingMode::Selection => {
+                            self.links.push(quote! {
+                                for source_id in &#sub_source.sources {
+                                    builder.set_topology_role(source_id, Role::SelectionBranch);
+                                }
+                            });
+
+                            let node_id = self.node_id_map[&sub_source];
+                            self.compile_graph.meta_mut()[node_id].set_role(Role::SelectionBranch);
+                        }
+                        _ => unreachable!(),
+                    }
 
                     self.links.push(quote! {
                         #group_source.extend(&#sub_source.sources);
@@ -297,6 +337,15 @@ impl Context {
 
         self.compile_graph.add_edge(from_id, to_id);
 
+        let (node_role, node_in_degree) = (
+            self.compile_graph.meta()[to_id].role(),
+            self.compile_graph.in_degree()[to_id],
+        );
+
+        if node_role == Role::SelectionBranch && node_in_degree > 1 {
+            self.errors.push(CodegenError::MultiPivotSelector { span });
+        }
+
         if let Err(OrcGraphError::CycleDetected) = self.compile_graph.sort_ordered() {
             let from_name = self
                 .anon_map
@@ -330,17 +379,22 @@ impl From<CodegenError> for syn::Error {
             CodegenError::DuplicateUnboundType { type_key, span } => syn::Error::new(
                 span,
                 format!(
-                    "Task Graph Error: Duplicate unbound type declaration: {type_key}.\n\
+                    "Graph Error: Duplicate unbound type declaration: {type_key}.\n\
                     Multiple instances of the same task type must be assigned to unique variables (e.g., foo: {type_key} -> bar: {type_key})."
                 ),
             ),
             CodegenError::CircularDependency { from, to, span } => syn::Error::new(
                 span,
-                format!("Task Graph Error: Circular dependency: {from} -> {to}."),
+                format!("Graph Error: Circular dependency: {from} -> {to}."),
             ),
             CodegenError::VariableCollision { var, span } => syn::Error::new(
                 span,
-                format!("Task Graph Error: Variable {var} has been already declared."),
+                format!("Graph Error: Variable {var} has been already declared."),
+            ),
+            CodegenError::MultiPivotSelector { span } => syn::Error::new(
+                span,
+                "Graph Error: Selection group (:) must be preceded strictly by a single selector node.\
+                Multiple parallel parents are forbidden.",
             ),
             CodegenError::Syn(syn_err) => syn_err,
         }

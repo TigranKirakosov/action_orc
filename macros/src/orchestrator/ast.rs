@@ -29,7 +29,7 @@ pub(super) enum NodeExpr {
     /// Any expression that results in a [action_orc_core::AsGraphEntry]
     Expression(Expr),
 
-    /// (A | B | C) or (A, B, C) or (A -> B -> C)
+    /// (A | B | C) or (A, B, C) or (A -> B -> C) or (A : B : C)
     Group(GroupBlock),
 }
 
@@ -48,12 +48,14 @@ pub(super) struct GroupBlock {
     pub(super) span_info: SpanInfo,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub(super) enum SchedulingMode {
     /// (A, B) or (A -> B)
     Sequence,
     /// (A | B | C)
     Parallel,
+    /// (A : B : C)
+    Selection,
 }
 
 impl std::fmt::Debug for Declartaion {

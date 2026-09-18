@@ -1,4 +1,4 @@
-error: Task Graph Error: Variable a has been already declared.
+error: Graph Error: Variable a has been already declared.
   --> tests/ui/fail/variable_collision.rs:10:9
    |
 10 |         a: B;

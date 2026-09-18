@@ -6,11 +6,11 @@ SyntaxTree {
     graphs: [
         Graph {
             entry: Declaration(
-                Task {
+                Declaration {
                     var: Some(
                         "a",
                     ),
-                    typ: "TaskA",
+                    typ: "A",
                 },
             ),
             conns: [],

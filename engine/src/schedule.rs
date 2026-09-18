@@ -1,26 +1,71 @@
 use crate::{NodeEvent, NodeStatus, Resolution};
 use action_orc_core::*;
 
-/// # Select/Backtrack rules
-/// ## Valid
-/// `X -> (A : B) -> Y`
+/// # Rules
+/// ## Resolving
+/// Any node that is **not** marked with [Role::Selector] allowed issue [ScheduleDirective::Resolve]
+///
+/// ## Advancing
+/// Only node that is marked with [Role::Selector] allowed to issue [ScheduleDirective::Advance] with [ScheduleDirective::Advance::target]
+///
+/// ### Valid
+/// `X -> (A ? B)`
+/// - X has [Role::Selector] due to arrow pointing to a selection group (each node has [Role::SelectionBranch])
+///
+/// ### Invalid
+/// `X -> Y` nor `X -> (A | B)` nor `X -> (A, B)`
+/// - X has no [Role::Selector]
+///
+/// ## Backtracking
+/// ### Valid
+/// `X -> (A ? B) -> Y`
 /// - can backtrack from either A or B to X, as X is a single node
 /// - can backtrack from Y to either A or B - selection was already registered in [Schedule::history]
 ///
-/// `(X, Y) -> (A : B) -> Z`
+/// `(X, Y) -> (A ? B)`
 /// - can backtrack from either A or B to Y, as sequence (X, Y) has clear last Y node
 ///
-/// ## Invalid
-/// `(X | Y) -> (A : B)`
+/// ### Invalid
+/// `(X | Y) -> (A ? B)`
 /// - X and Y might want to select different paths, possible conflict
 ///
-/// `(A : B) -> (Z | W)`
+/// `(A ? B) -> (Z | W)`
 /// - Z and W run in parallel; letting either node backtrack independently would corrupt the peer's active execution state
 #[derive(Clone, Copy)]
 pub enum ScheduleDirective {
-    Advance { pivot: NodeId },
-    SelectiveAdvance { pivot: NodeId, target: NodeId },
+    Resolve { pivot: NodeId },
+    Advance { pivot: NodeId, target: NodeId },
     Backtrack,
+}
+
+#[derive(Debug)]
+pub enum SchedulerError {
+    AdvanceBypass {
+        pivot: NodeDisplay,
+    },
+    InvalidAdvanceSource {
+        source: NodeDisplay,
+        target: NodeDisplay,
+    },
+    InvalidAdvanceTarget {
+        source: NodeDisplay,
+        target: NodeDisplay,
+    },
+    NowhereToBacktrack,
+    BacktrackToParallelBranch {
+        from: NodeDisplay,
+        to: NodeDisplay,
+    },
+    BacktrackFromParallelBranch {
+        from: NodeDisplay,
+        to: NodeDisplay,
+    },
+}
+
+#[derive(Debug)]
+pub struct NodeDisplay {
+    id: NodeId,
+    name: &'static str,
 }
 
 #[derive(Default)]
@@ -58,11 +103,90 @@ impl Schedule {
         self.start()
     }
 
-    pub(crate) fn process(&mut self, directive: ScheduleDirective) -> (bool, Vec<NodeEvent>) {
+    fn validate(&self, directive: ScheduleDirective) -> Result<(), SchedulerError> {
+        match directive {
+            ScheduleDirective::Resolve { pivot } => {
+                let meta = &self.graph.meta()[pivot];
+                if meta.role() == Role::Selector {
+                    Err(SchedulerError::AdvanceBypass {
+                        pivot: NodeDisplay::from(pivot, meta),
+                    })
+                } else {
+                    Ok(())
+                }
+            }
+            ScheduleDirective::Advance { pivot, target } => {
+                let source_meta = &self.graph.meta()[pivot];
+                let target_meta = &self.graph.meta()[target];
+
+                if source_meta.role() != Role::Selector {
+                    return Err(SchedulerError::InvalidAdvanceSource {
+                        source: NodeDisplay::from(pivot, source_meta),
+                        target: NodeDisplay::from(target, target_meta),
+                    });
+                }
+
+                if !self.graph.adj()[pivot].contains(&target) {
+                    return Err(SchedulerError::InvalidAdvanceTarget {
+                        source: NodeDisplay::from(pivot, source_meta),
+                        target: NodeDisplay::from(target, target_meta),
+                    });
+                }
+
+                Ok(())
+            }
+            ScheduleDirective::Backtrack => {
+                if self.history.is_empty() {
+                    return Err(SchedulerError::NowhereToBacktrack);
+                }
+
+                if self.history.len() == 1 {
+                    return Ok(());
+                }
+
+                let current = *self.history.last().unwrap();
+                let current_meta = &self.graph.meta()[current];
+
+                let parent = self.history[self.history.len() - 2];
+                let parent_meta = &self.graph.meta()[parent];
+
+                match current_meta.role() {
+                    Role::SelectionBranch => Ok(()),
+                    Role::Regular | Role::Selector => {
+                        // Backtracking into a parallel branch is ambiguous operation since
+                        // we have no clue which node a parent is, it could be anything in a complex graph
+                        // Furthermore, in a graph composed at runtime we could have unknown parallel parents
+                        // hence user backtracking into them will likely cause an undefined behaviour; forbidden
+                        if parent_meta.role() == Role::ParallelBranch {
+                            Err(SchedulerError::BacktrackToParallelBranch {
+                                from: NodeDisplay::from(current, current_meta),
+                                to: NodeDisplay::from(parent, parent_meta),
+                            })
+                        } else {
+                            Ok(())
+                        }
+                    }
+                    // Backtracking out of  parallel branch is forbidden too due to it
+                    // possibly executing at the moment
+                    Role::ParallelBranch => Err(SchedulerError::BacktrackFromParallelBranch {
+                        from: NodeDisplay::from(current, current_meta),
+                        to: NodeDisplay::from(parent, parent_meta),
+                    }),
+                }
+            }
+        }
+    }
+
+    pub(crate) fn process(
+        &mut self,
+        directive: ScheduleDirective,
+    ) -> Result<(bool, Vec<NodeEvent>), SchedulerError> {
+        self.validate(directive)?;
+
         let mut queue = Vec::new();
 
         match directive {
-            ScheduleDirective::Advance { pivot } => {
+            ScheduleDirective::Resolve { pivot } => {
                 queue.push((pivot, NodeStatus::Resolved(Resolution::Finished)));
                 self.history.push(pivot);
 
@@ -75,7 +199,7 @@ impl Schedule {
                     }
                 }
             }
-            ScheduleDirective::SelectiveAdvance { pivot, target } => {
+            ScheduleDirective::Advance { pivot, target } => {
                 queue.push((pivot, NodeStatus::Resolved(Resolution::Finished)));
                 self.history.push(pivot);
 
@@ -127,6 +251,66 @@ impl Schedule {
 
         let is_complete = self.in_degree.len() == self.finished_count;
 
-        (is_complete, queue)
+        Ok((is_complete, queue))
     }
 }
+
+impl std::fmt::Display for NodeDisplay {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        let Self { id, name } = self;
+        write!(f, "[{name} : {id}]")
+    }
+}
+
+impl NodeDisplay {
+    fn from(id: NodeId, meta: &Meta) -> Self {
+        Self {
+            id,
+            name: meta.type_name(),
+        }
+    }
+}
+
+impl std::fmt::Display for SchedulerError {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "Scheduler error: ")?;
+
+        match self {
+            SchedulerError::AdvanceBypass { pivot } => {
+                write!(
+                    f,
+                    "Attempt to resolve node {pivot} without advancing directive."
+                )
+            }
+            SchedulerError::InvalidAdvanceSource { source, target } => {
+                write!(
+                    f,
+                    "Cannot use advance directive from standard node {source} to {target}. Use standard resolve instead."
+                )
+            }
+            SchedulerError::InvalidAdvanceTarget { source, target } => {
+                write!(
+                    f,
+                    "Node {target} is not a valid branch target for selector node {source}."
+                )
+            }
+            SchedulerError::NowhereToBacktrack => {
+                write!(f, "Attempt to backtrack to non-existent point in history.")
+            }
+            SchedulerError::BacktrackToParallelBranch { from, to } => {
+                write!(
+                    f,
+                    "Attempt to backtrack to parallel branch {to} from {from}"
+                )
+            }
+            SchedulerError::BacktrackFromParallelBranch { from, to } => {
+                write!(
+                    f,
+                    "Attempt to backtrack from parallel branch {from} to {to}"
+                )
+            }
+        }
+    }
+}
+
+impl std::error::Error for SchedulerError {}

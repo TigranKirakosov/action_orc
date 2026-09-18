@@ -10,7 +10,7 @@ pub(crate) fn orc(input: TokenStream) -> TokenStream {
     match parser::parse(input.into()) {
         Ok(ast) => codegen::generate(ast),
         Err(err) => {
-            let error_msg = format!("Task graph parsing error: {:?}", err);
+            let error_msg = format!("Graph parsing error: {:?}", err);
             quote! { compile_error!(#error_msg); }.into()
         }
     }

@@ -162,6 +162,10 @@ impl Graph {
         self.meta.as_slice()
     }
 
+    pub fn meta_mut(&mut self) -> &mut [Meta] {
+        &mut self.meta
+    }
+
     pub fn sources(&self) -> impl Iterator<Item = NodeId> {
         let len = self.adj.len();
         (0..len).filter(|&id| self.in_degree[id] == 0)

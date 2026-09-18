@@ -1,11 +1,11 @@
-error: Task Graph Error: Duplicate unbound type declaration: A.
+error: Graph Error: Duplicate unbound type declaration: A.
        Multiple instances of the same task type must be assigned to unique variables (e.g., foo: A -> bar: A).
   --> tests/ui/fail/duplicate_unbound_type.rs:11:9
    |
 11 |         A -> C;
    |         ^
 
-error: Task Graph Error: Duplicate unbound type declaration: A.
+error: Graph Error: Duplicate unbound type declaration: A.
        Multiple instances of the same task type must be assigned to unique variables (e.g., foo: A -> bar: A).
   --> tests/ui/fail/duplicate_unbound_type.rs:12:9
    |

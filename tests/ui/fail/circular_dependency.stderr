@@ -1,16 +1,16 @@
-error: Task Graph Error: Circular dependency: b -> a.
+error: Graph Error: Circular dependency: b -> a.
  --> tests/ui/fail/circular_dependency.rs:9:17
   |
 9 |         [b] -> [a];
   |                 ^
 
-error: Task Graph Error: Circular dependency: B -> a.
+error: Graph Error: Circular dependency: B -> a.
   --> tests/ui/fail/circular_dependency.rs:13:23
    |
 13 |         a: A -> B -> [a];
    |                       ^
 
-error: Task Graph Error: Circular dependency: B -> combat.
+error: Graph Error: Circular dependency: B -> combat.
   --> tests/ui/fail/circular_dependency.rs:19:31
    |
 19 |         A -> @combat -> B -> @combat;

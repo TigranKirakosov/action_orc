@@ -6,47 +6,31 @@ SyntaxTree {
     graphs: [
         Graph {
             entry: Declaration(
-                Task {
-                    var: Some(
-                        "enter",
-                    ),
-                    typ: "Entering",
+                Declaration {
+                    var: None,
+                    typ: "X",
                 },
-            ),
-            conns: [
-                Declaration(
-                    Task {
-                        var: Some(
-                            "inited",
-                        ),
-                        typ: "InitScene",
-                    },
-                ),
-            ],
-            span_info: SpanInfo {
-                span: Span,
-                at_call_site: false,
-            },
-        },
-        Graph {
-            entry: Binding(
-                Ident(
-                    inited,
-                ),
             ),
             conns: [
                 Group(
                     GroupBlock {
-                        mode: Parallel,
+                        mode: Selection,
                         graphs: [
                             Graph {
                                 entry: Declaration(
-                                    Task {
+                                    Declaration {
                                         var: None,
                                         typ: "A",
                                     },
                                 ),
-                                conns: [],
+                                conns: [
+                                    Declaration(
+                                        Declaration {
+                                            var: None,
+                                            typ: "B",
+                                        },
+                                    ),
+                                ],
                                 span_info: SpanInfo {
                                     span: Span,
                                     at_call_site: false,
@@ -54,25 +38,19 @@ SyntaxTree {
                             },
                             Graph {
                                 entry: Declaration(
-                                    Task {
-                                        var: None,
-                                        typ: "B",
-                                    },
-                                ),
-                                conns: [],
-                                span_info: SpanInfo {
-                                    span: Span,
-                                    at_call_site: false,
-                                },
-                            },
-                            Graph {
-                                entry: Declaration(
-                                    Task {
+                                    Declaration {
                                         var: None,
                                         typ: "C",
                                     },
                                 ),
-                                conns: [],
+                                conns: [
+                                    Declaration(
+                                        Declaration {
+                                            var: None,
+                                            typ: "D",
+                                        },
+                                    ),
+                                ],
                                 span_info: SpanInfo {
                                     span: Span,
                                     at_call_site: false,
@@ -86,11 +64,9 @@ SyntaxTree {
                     },
                 ),
                 Declaration(
-                    Task {
-                        var: Some(
-                            "exit",
-                        ),
-                        typ: "Exiting",
+                    Declaration {
+                        var: None,
+                        typ: "Y",
                     },
                 ),
             ],

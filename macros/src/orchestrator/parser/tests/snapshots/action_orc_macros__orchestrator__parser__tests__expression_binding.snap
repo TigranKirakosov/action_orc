@@ -1,0 +1,99 @@
+---
+source: macros/src/orchestrator/parser/tests/mod.rs
+expression: ast
+---
+SyntaxTree {
+    graphs: [
+        Graph {
+            entry: Declaration(
+                Declaration {
+                    var: None,
+                    typ: "A",
+                },
+            ),
+            conns: [
+                Expression(
+                    Expr::Struct {
+                        attrs: [],
+                        qself: None,
+                        path: Path {
+                            leading_colon: None,
+                            segments: [
+                                PathSegment {
+                                    ident: Ident(
+                                        Struct,
+                                    ),
+                                    arguments: PathArguments::None,
+                                },
+                            ],
+                        },
+                        brace_token: Brace,
+                        fields: [
+                            FieldValue {
+                                attrs: [],
+                                member: Member::Named(
+                                    Ident(
+                                        x,
+                                    ),
+                                ),
+                                colon_token: None,
+                                expr: Expr::Path {
+                                    attrs: [],
+                                    qself: None,
+                                    path: Path {
+                                        leading_colon: None,
+                                        segments: [
+                                            PathSegment {
+                                                ident: Ident(
+                                                    x,
+                                                ),
+                                                arguments: PathArguments::None,
+                                            },
+                                        ],
+                                    },
+                                },
+                            },
+                            Comma,
+                            FieldValue {
+                                attrs: [],
+                                member: Member::Named(
+                                    Ident(
+                                        y,
+                                    ),
+                                ),
+                                colon_token: None,
+                                expr: Expr::Path {
+                                    attrs: [],
+                                    qself: None,
+                                    path: Path {
+                                        leading_colon: None,
+                                        segments: [
+                                            PathSegment {
+                                                ident: Ident(
+                                                    y,
+                                                ),
+                                                arguments: PathArguments::None,
+                                            },
+                                        ],
+                                    },
+                                },
+                            },
+                        ],
+                        dot2_token: None,
+                        rest: None,
+                    },
+                ),
+                Declaration(
+                    Declaration {
+                        var: None,
+                        typ: "B",
+                    },
+                ),
+            ],
+            span_info: SpanInfo {
+                span: Span,
+                at_call_site: false,
+            },
+        },
+    ],
+}

@@ -4,29 +4,15 @@ use std::sync::Arc;
 use std::{any::TypeId, collections::HashMap};
 
 use crate::NodeCommand;
+use crate::schedule::SchedulerError;
 use crate::{NodeStatus, schedule::Schedule};
 
 #[derive(Debug)]
 pub enum ReactorError {
     MissingListener,
     UnknownTypeId,
+    Scheduler(SchedulerError),
 }
-
-impl fmt::Display for ReactorError {
-    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
-        match self {
-            ReactorError::MissingListener => {
-                write!(f, "Reactor error: Missing listener registration.")
-            }
-            ReactorError::UnknownTypeId => write!(
-                f,
-                "Reactor error: Attempted to process an unknown TypeId layout."
-            ),
-        }
-    }
-}
-
-impl std::error::Error for ReactorError {}
 
 #[derive(Default)]
 pub struct Reactor {
@@ -93,12 +79,9 @@ impl Reactor {
         Ok(())
     }
 
-    /// Evaluates node command.
-    ///
-    /// Will error [ReactorError::MissingListener] if some node does not have registered [Listener]
-    /// to receive control over schedule advancement.
+    /// Evaluates node command.\
     pub fn resolve(&mut self, command: NodeCommand) -> Result<bool, ReactorError> {
-        let (state, node_payload) = self.schedule.process(command.schedule_directive);
+        let (state, node_payload) = self.schedule.process(command.schedule_directive)?;
 
         for (id, event) in node_payload {
             self.notify(id, event)?;
@@ -147,5 +130,33 @@ where
 {
     fn notify(&self, id: NodeId, event: NodeStatus) {
         (**self).notify(id, event);
+    }
+}
+
+impl fmt::Display for ReactorError {
+    fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
+        write!(f, "Reactor error: ",)?;
+        match self {
+            ReactorError::MissingListener => write!(f, "Missing listener registration."),
+            ReactorError::UnknownTypeId => {
+                write!(f, "Attempted to process an unknown TypeId layout.")
+            }
+            ReactorError::Scheduler(err) => write!(f, "{}", err),
+        }
+    }
+}
+
+impl std::error::Error for ReactorError {
+    fn source(&self) -> Option<&(dyn std::error::Error + 'static)> {
+        match self {
+            ReactorError::Scheduler(err) => Some(err),
+            _ => None,
+        }
+    }
+}
+
+impl From<SchedulerError> for ReactorError {
+    fn from(err: SchedulerError) -> Self {
+        ReactorError::Scheduler(err)
     }
 }

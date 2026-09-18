@@ -4,10 +4,11 @@ use syn::{Ident, Type};
 use winnow::{
     ModalResult, Parser,
     error::{ContextError, ErrMode, ParserError, StrContext, StrContextValue},
+    stream::Stream,
     token::any,
 };
 
-use super::{ParseError, SpanInfo, TokenStreamParseExt, current_span};
+use super::{ParseError, SpanInfo, current_span};
 
 /// Matches [TokenTree::Group] with [Delimiter],
 /// parses its inner stream completely using `parser`, and handles span mapping
@@ -20,24 +21,49 @@ where
     F: for<'b> FnMut(&mut &'b [TokenTree]) -> ModalResult<O, ParseError<'b>>,
 {
     move |input: &mut &'a [TokenTree]| {
-        let (inner_stream, group_span) = any
-            .verify_map(|tt| {
-                let group_span = current_span(std::slice::from_ref(&tt));
-                match tt {
-                    TokenTree::Group(g) if g.delimiter() == delim => Some((g.stream(), group_span)),
-                    _ => None,
+        let checkpoint = input.checkpoint();
+
+        let (g_stream, group_span) = any
+            .verify_map(|tt| match tt {
+                TokenTree::Group(ref g) if g.delimiter() == delim => {
+                    let span = current_span(std::slice::from_ref(&tt));
+                    Some((g.stream(), span))
                 }
+                _ => None,
             })
             .context(StrContext::Expected(StrContextValue::Description(
                 description,
             )))
             .parse_next(input)?;
 
-        inner_stream.parse_nested(group_span, input, &mut parser)
+        let inner_tokens: Vec<TokenTree> = g_stream.into_iter().collect();
+        let mut inner_input = inner_tokens.as_slice();
+
+        match parser.parse_next(&mut inner_input) {
+            Ok(output) => {
+                if !inner_input.is_empty() {
+                    input.reset(&checkpoint);
+                    return Err(ErrMode::Backtrack(ParseError::from_input(input)));
+                }
+                Ok(output)
+            }
+            Err(err) => {
+                input.reset(&checkpoint);
+                Err(err.map(|err| ParseError {
+                    span_info: if err.span_info.at_call_site {
+                        group_span
+                    } else {
+                        err.span_info
+                    },
+                    inner: err.inner,
+                    input,
+                }))
+            }
+        }
     }
 }
 
-const TYPE_PATH_TERMINATORS: [char; 4] = [':', ';', '|', ','];
+const TYPE_PATH_TERMINATORS: [char; 5] = [':', ';', '|', ',', '?'];
 /// Parses any fully qualified Rust type with generics (e.g., `my_mod::Entering<Main>`)
 /// Will stop on punctuation within [TYPE_PATH_TERMINATORS] or on arrow `->`
 pub(super) fn type_path<'a>(input: &mut &'a [TokenTree]) -> ModalResult<Type, ParseError<'a>> {

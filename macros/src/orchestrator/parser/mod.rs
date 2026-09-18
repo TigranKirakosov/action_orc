@@ -1,5 +1,4 @@
 use super::ast::*;
-use super::parser::ext::TokenStreamParseExt;
 
 use proc_macro2::{Delimiter, Span, TokenStream as TokenStream2, TokenTree};
 use winnow::{
@@ -14,7 +13,6 @@ use error::ParseError;
 
 mod combinators;
 mod error;
-mod ext;
 
 #[cfg(test)]
 mod tests;
@@ -131,6 +129,7 @@ fn expr_block<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseErr
 
 /// 1) (A | B | C)
 /// 2) (A, B, C)
+/// 3) (A ? B ? C)
 fn group<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>> {
     let group_span = current_span(input);
     let expr = enclosed(
@@ -139,6 +138,7 @@ fn group<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a
             alt((
                 parallel_block(group_span.clone()),
                 sequence_block(group_span.clone()),
+                selection_block(group_span.clone()),
             ))
             .parse_next(i)
         },
@@ -192,6 +192,26 @@ fn sequence_block<'a>(
 
                 Ok(block)
             }
+            Err(err) => {
+                input.reset(&checkpoint);
+                Err(err)
+            }
+        }
+    }
+}
+
+fn selection_block<'a>(
+    span_info: SpanInfo,
+) -> impl FnMut(&mut &'a [TokenTree]) -> ModalResult<GroupBlock, ParseError<'a>> {
+    move |input: &mut &'a [TokenTree]| {
+        let checkpoint = input.checkpoint();
+
+        match separated(2.., graph, punct('?')).parse_next(input) {
+            Ok(graphs) => Ok(GroupBlock {
+                mode: SchedulingMode::Selection,
+                graphs,
+                span_info,
+            }),
             Err(err) => {
                 input.reset(&checkpoint);
                 Err(err)

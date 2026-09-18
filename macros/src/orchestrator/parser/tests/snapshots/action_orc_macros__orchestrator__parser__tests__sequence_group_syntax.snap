@@ -7,37 +7,14 @@ SyntaxTree {
         Graph {
             entry: Declaration(
                 Declaration {
-                    var: Some(
-                        "enter",
-                    ),
-                    typ: "Entering",
+                    var: None,
+                    typ: "X",
                 },
-            ),
-            conns: [
-                Declaration(
-                    Declaration {
-                        var: Some(
-                            "inited",
-                        ),
-                        typ: "InitScene",
-                    },
-                ),
-            ],
-            span_info: SpanInfo {
-                span: Span,
-                at_call_site: false,
-            },
-        },
-        Graph {
-            entry: Binding(
-                Ident(
-                    inited,
-                ),
             ),
             conns: [
                 Group(
                     GroupBlock {
-                        mode: Parallel,
+                        mode: Sequence,
                         graphs: [
                             Graph {
                                 entry: Declaration(
@@ -46,20 +23,14 @@ SyntaxTree {
                                         typ: "A",
                                     },
                                 ),
-                                conns: [],
-                                span_info: SpanInfo {
-                                    span: Span,
-                                    at_call_site: false,
-                                },
-                            },
-                            Graph {
-                                entry: Declaration(
-                                    Declaration {
-                                        var: None,
-                                        typ: "B",
-                                    },
-                                ),
-                                conns: [],
+                                conns: [
+                                    Declaration(
+                                        Declaration {
+                                            var: None,
+                                            typ: "B",
+                                        },
+                                    ),
+                                ],
                                 span_info: SpanInfo {
                                     span: Span,
                                     at_call_site: false,
@@ -72,7 +43,14 @@ SyntaxTree {
                                         typ: "C",
                                     },
                                 ),
-                                conns: [],
+                                conns: [
+                                    Declaration(
+                                        Declaration {
+                                            var: None,
+                                            typ: "D",
+                                        },
+                                    ),
+                                ],
                                 span_info: SpanInfo {
                                     span: Span,
                                     at_call_site: false,
@@ -87,10 +65,8 @@ SyntaxTree {
                 ),
                 Declaration(
                     Declaration {
-                        var: Some(
-                            "exit",
-                        ),
-                        typ: "Exiting",
+                        var: None,
+                        typ: "Y",
                     },
                 ),
             ],

@@ -1,6 +1,6 @@
 use std::collections::HashMap;
 
-use crate::{Graph, GraphBounds, GraphEntry, Meta, NodeId};
+use crate::{Graph, GraphBounds, GraphEntry, Meta, NodeId, Role};
 
 pub struct GraphBuilder {
     pub(crate) meta: Vec<Meta>,
@@ -70,6 +70,10 @@ impl<'a> GraphBuilder {
                 self.edges.push((from, to));
             }
         }
+    }
+
+    pub fn set_topology_role(&mut self, node_id: &NodeId, role: Role) {
+        self.meta[*node_id].role = role;
     }
 
     pub fn build(self) -> Graph {

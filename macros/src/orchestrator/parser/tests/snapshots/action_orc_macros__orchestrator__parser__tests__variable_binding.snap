@@ -1,0 +1,42 @@
+---
+source: macros/src/orchestrator/parser/tests/mod.rs
+expression: ast
+---
+SyntaxTree {
+    graphs: [
+        Graph {
+            entry: Declaration(
+                Declaration {
+                    var: Some(
+                        "a",
+                    ),
+                    typ: "A",
+                },
+            ),
+            conns: [],
+            span_info: SpanInfo {
+                span: Span,
+                at_call_site: false,
+            },
+        },
+        Graph {
+            entry: Binding(
+                Ident(
+                    a,
+                ),
+            ),
+            conns: [
+                Declaration(
+                    Declaration {
+                        var: None,
+                        typ: "B",
+                    },
+                ),
+            ],
+            span_info: SpanInfo {
+                span: Span,
+                at_call_site: false,
+            },
+        },
+    ],
+}
