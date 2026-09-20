@@ -44,7 +44,7 @@ pub struct Meta {
 }
 
 impl Meta {
-    pub(crate) fn of<T: Marker>() -> Self {
+    pub fn of<T: Marker>() -> Self {
         Self {
             role_us: UpstreamRole::Regular,
             role_ds: DownstreamRole::Regular,

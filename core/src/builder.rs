@@ -1,14 +1,18 @@
+use crate::{
+    DownstreamRole, Graph, GraphBounds, GraphEntry, Meta, NodeId, UpstreamRole, graph_bound::Bound,
+    graph_entry::AnyGraph,
+};
 use std::collections::HashMap;
 
-use crate::{DownstreamRole, Graph, GraphBounds, GraphEntry, Meta, NodeId, UpstreamRole};
-
+#[derive(Default)]
 pub struct GraphBuilder {
-    pub(crate) meta: Vec<Meta>,
-    pub(crate) edges: Vec<(NodeId, NodeId)>,
-    pub(crate) graph_cache: HashMap<*const Graph, GraphBounds>,
+    pub meta: Vec<Meta>,
+    pub edges: Vec<(NodeId, NodeId)>,
+    // Use an erased *const () pointer to provide robust caching keys for trait objects
+    pub(crate) graph_cache: HashMap<*const (), GraphBounds>,
 }
 
-impl<'a> GraphBuilder {
+impl GraphBuilder {
     pub fn new() -> Self {
         Self {
             meta: Vec::new(),
@@ -18,7 +22,7 @@ impl<'a> GraphBuilder {
     }
 
     /// Normalizes [GraphEntry] into unified [GraphBounds]
-    pub fn append(&mut self, entry: GraphEntry<'a>) -> GraphBounds {
+    pub fn append<'a>(&mut self, entry: GraphEntry<'a>) -> GraphBounds {
         match entry {
             GraphEntry::Node(meta) => {
                 let node_id = self.meta.len();
@@ -29,9 +33,9 @@ impl<'a> GraphBuilder {
                     sinks: vec![node_id],
                 }
             }
-            GraphEntry::OwnedGraph(sub_graph) => self.merge_layout(&sub_graph),
+            GraphEntry::OwnedGraph(sub_graph) => self.merge_layout(sub_graph.as_ref()),
             GraphEntry::BorrowedGraph(sub_graph) => {
-                let ptr = sub_graph as *const Graph;
+                let ptr = sub_graph.as_any() as *const _ as *const ();
                 if let Some(cached_bounds) = self.graph_cache.get(&ptr) {
                     return cached_bounds.clone();
                 }
@@ -44,7 +48,7 @@ impl<'a> GraphBuilder {
         }
     }
 
-    fn merge_layout(&mut self, sub_graph: &Graph) -> GraphBounds {
+    fn merge_layout(&mut self, sub_graph: &dyn AnyGraph) -> GraphBounds {
         let offset = self.meta.len();
 
         for meta in sub_graph.meta() {
@@ -57,8 +61,17 @@ impl<'a> GraphBuilder {
             }
         }
 
-        let sources = sub_graph.sources().map(|id| id + offset).collect();
-        let sinks = sub_graph.sinks().map(|id| id + offset).collect();
+        let sources = sub_graph
+            .sources()
+            .into_iter()
+            .map(|id| id + offset)
+            .collect();
+
+        let sinks = sub_graph
+            .sinks()
+            .into_iter()
+            .map(|id| id + offset)
+            .collect();
 
         GraphBounds { sources, sinks }
     }
@@ -94,7 +107,9 @@ impl<'a> GraphBuilder {
         self.meta[*node_id].set_role_ds(role);
     }
 
-    pub fn build(self) -> Graph {
+    /// Generates the finalized topology, binding it to the specified
+    /// compiled type-state parameters at the boundary entrypoint
+    pub fn build<I: Bound, O: Bound>(self) -> Graph<I, O> {
         let mut graph = Graph::from_meta(self.meta);
 
         for (from, to) in self.edges {

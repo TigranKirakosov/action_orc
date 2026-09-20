@@ -48,7 +48,7 @@ pub(super) struct GroupBlock {
     pub(super) span_info: SpanInfo,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) enum SchedulingMode {
     /// (A, B) or (A -> B)
     Sequence,

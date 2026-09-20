@@ -14,18 +14,17 @@ pub enum ReactorError {
     Scheduler(SchedulerError),
 }
 
-#[derive(Default)]
-pub struct Reactor {
-    pub(crate) schedule: Schedule,
+pub struct Reactor<'a> {
+    pub(crate) schedule: Schedule<'a>,
     pub(crate) listeners: HashMap<TypeId, Vec<Box<dyn Listener>>>,
 }
 
-impl Reactor {
+impl<'a> Reactor<'a> {
     /// Build a reactor based on a configured graph.
     ///
     /// Once given a [Graph], reactor is tied to it
     /// and will treat it as a static blueprint for underlying [Schedule].
-    pub fn from<'a, G: AsGraphEntryProxy<'a>>(layout: G) -> Self {
+    pub fn from<G: AsGraphEntryProxy<'a>>(layout: G) -> Self {
         let graph = layout.into_compiled_graph();
         let schedule = Schedule::from(graph);
 

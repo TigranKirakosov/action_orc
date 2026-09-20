@@ -68,16 +68,15 @@ pub struct NodeDisplay {
     name: &'static str,
 }
 
-#[derive(Default)]
-pub(crate) struct Schedule {
-    pub(crate) graph: Graph,
+pub(crate) struct Schedule<'a> {
+    pub(crate) graph: Box<dyn AnyGraph + 'a>,
     pub(crate) in_degree: Vec<usize>,
     pub(crate) finished_count: usize,
     pub(crate) history: Vec<NodeId>,
 }
 
-impl Schedule {
-    pub(crate) fn from(graph: Graph) -> Self {
+impl<'a> Schedule<'a> {
+    pub(crate) fn from(graph: Box<dyn AnyGraph + 'a>) -> Self {
         let in_degree = graph.in_degree();
 
         Self {
@@ -91,6 +90,7 @@ impl Schedule {
     pub(crate) fn start(&mut self) -> Vec<NodeEvent> {
         self.graph
             .sources()
+            .into_iter()
             .map(|source| {
                 self.history.push(source);
                 (source, NodeStatus::Started)

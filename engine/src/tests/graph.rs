@@ -127,3 +127,27 @@ fn standalone_embedding_macro() -> Result {
 
     Ok(())
 }
+
+#[test]
+fn parallel_group_compile_marker() -> Result {
+    declare_tags!(X, Y);
+    declare_tags!(A0, A1, B0, B1);
+
+    // This graph has two parallel tracks
+    // i.e., two sources and two sinks
+    // let precompiled = orc!(
+    //     A0 -> A1;
+    //     B0 -> B1;
+    // );
+
+    let precompiled = orc!(
+        X -> (A0 -> A1 ? B0 -> B1) -> Y;
+    );
+
+    // Can't allow this due to parallel groups are not a subject for selection
+    let attempt_to_select_predefined = orc!(
+      X -> (@precompiled ? Y);
+    );
+
+    Ok(())
+}

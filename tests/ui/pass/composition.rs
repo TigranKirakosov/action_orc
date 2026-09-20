@@ -6,13 +6,13 @@ struct TaskA;
 struct TaskB;
 struct TaskC;
 
-fn combat_fn() -> Graph {
+fn combat_fn() -> IdentityGraph {
     orc! {
         TaskA -> TaskB;
     }
 }
 
-fn loot_fn() -> Graph {
+fn loot_fn() -> IdentityGraph {
     orc! {
         TaskC;
     }

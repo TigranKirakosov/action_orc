@@ -36,14 +36,14 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let has_params = !param_idents.is_empty();
     if has_params {
-        // Schema: pub a: &'a Graph
+        // Schema: pub a: &'a dyn AnyGraph
         let generated_fields = param_idents.iter().map(|id| syn::Field {
             attrs: Vec::new(),
             vis: Visibility::Public(syn::token::Pub::default()),
             mutability: syn::FieldMutability::None,
             ident: Some(id.clone()),
             colon_token: Some(syn::token::Colon::default()),
-            ty: syn::parse_quote! { &'a Graph },
+            ty: syn::parse_quote! { &'a dyn AnyGraph },
         });
 
         let mut fields_named = FieldsNamed {
@@ -60,7 +60,7 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let (final_impl_generics, final_ty_generics, final_struct) =
         // Presence of #[params(x, y, z)] means we must inject <'a> lifetime to
-        // support 'pub member: &'a Graph' contract
+        // support 'pub member: &'a dyn AnyGraph' contract
         if has_params || generics.lifetimes().next().is_some() {
             let current_struct = if generics.lifetimes().next().is_none() {
                 let mut modified_struct = input_struct.clone();
@@ -121,7 +121,7 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
                     #dsl_tokens
                 };
 
-                GraphEntry::OwnedGraph(compiled_graph)
+                GraphEntry::OwnedGraph(Box::new(compiled_graph))
             }
         }
     };

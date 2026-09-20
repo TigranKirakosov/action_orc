@@ -3,12 +3,12 @@ use quote::{ToTokens, quote};
 use syn::Type;
 
 mod ast;
-mod codegen;
+mod compiler;
 mod parser;
 
 pub(crate) fn orc(input: TokenStream) -> TokenStream {
     match parser::parse(input.into()) {
-        Ok(ast) => codegen::generate(ast),
+        Ok(ast) => compiler::generate(ast),
         Err(err) => {
             let error_msg = format!("Graph parsing error: {:?}", err);
             quote! { compile_error!(#error_msg); }.into()

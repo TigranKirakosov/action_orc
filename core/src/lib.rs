@@ -1,5 +1,6 @@
 mod builder;
 mod graph;
+mod graph_bound;
 mod graph_entry;
 mod meta;
 #[cfg(test)]
@@ -8,6 +9,7 @@ mod utils;
 
 pub use builder::*;
 pub use graph::*;
+pub use graph_bound::*;
 pub use graph_entry::*;
 pub use meta::*;
 

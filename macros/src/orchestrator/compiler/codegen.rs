@@ -1,102 +1,31 @@
-use action_orc_core::DownstreamRole;
+use action_orc_core::{DownstreamRole, UpstreamRole};
 #[allow(unused)]
 use action_orc_core::{Graph as OrcGraph, GraphEntry, GraphError as OrcGraphError};
-use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{format_ident, quote, quote_spanned};
-use std::collections::{HashMap, HashSet};
+use quote::{format_ident, quote};
 use syn::{Ident, spanned::Spanned};
 
 use super::{
+    CodegenError, Context, Sink, Source,
     ast::{self, Declartaion, GroupBlock, NodeExpr, SchedulingMode},
     format_type,
 };
 
-#[derive(Default)]
-struct Context {
-    compile_graph: OrcGraph,
-    decls: Vec<TokenStream2>,
-    links: Vec<TokenStream2>,
-    parallel_group_id_counter: usize,
-    anon_id_counter: usize,
-    node_id_map: HashMap<Ident, usize>,
-    anon_map: HashMap<Ident, TypeStr>,
-    unbound_types: HashSet<TypeStr>,
-    errors: Vec<CodegenError>,
-}
-
-pub(super) enum CodegenError {
-    DuplicateUnboundType {
-        type_key: String,
-        span: Span,
-    },
-    CircularDependency {
-        from: String,
-        to: String,
-        span: Span,
-    },
-    VariableCollision {
-        var: String,
-        span: Span,
-    },
-    MultiPivotSelector {
-        span: Span,
-    },
-    InvalidSelectionBranch {
-        span: Span,
-    },
-    Syn(syn::Error),
-}
-
 struct IdFactory;
 struct DummyMarker;
-struct Source(Ident);
-struct Sink(Ident);
-
-type TypeStr = String;
-
-pub(super) fn generate(ast: ast::SyntaxTree) -> TokenStream {
-    let mut cx = Context::default();
-
-    for graph in ast.graphs {
-        let _ = cx.process_graph(graph);
-    }
-
-    let Context {
-        decls,
-        links,
-        errors,
-        ..
-    } = cx;
-
-    let compile_errors = errors.into_iter().map(|codegen_err| {
-        let syn_err = syn::Error::from(codegen_err);
-        let err_msg = syn_err.to_string();
-        let err_span = syn_err.span();
-
-        quote_spanned! { err_span =>
-            compile_error!{#err_msg};
-        }
-    });
-
-    let out_stream = quote! {
-       {
-            let mut builder = GraphBuilder::new();
-            #(#decls)*
-            #(#links)*
-            #(#compile_errors)*
-            builder.build()
-       }
-    };
-
-    out_stream.into()
-}
 
 impl Context {
-    fn process_graph(&mut self, graph: ast::Graph) -> (Source, Sink) {
-        let (source, mut prev_sink) = self.process_node(graph.entry);
+    pub(super) fn process_graph(&mut self, graph: ast::Graph) -> (Source, Sink) {
+        let mut entry_mode = None;
+
+        if let NodeExpr::Group(ref block) = graph.entry {
+            entry_mode = Some(block.mode);
+        }
+
+        let (source, mut prev_sink) = self.process_node(graph.entry, entry_mode);
 
         for conn in graph.conns {
+            let mut conn_mode = None;
             let node_span = match &conn {
                 NodeExpr::Declaration(task) => task
                     .var
@@ -105,7 +34,10 @@ impl Context {
                     .unwrap_or_else(|| task.typ.span()),
                 NodeExpr::Binding(var) => var.span(),
                 NodeExpr::Expression(expr) => expr.span(),
-                NodeExpr::Group(block) => block.span_info.span,
+                NodeExpr::Group(block) => {
+                    conn_mode = Some(block.mode);
+                    block.span_info.span
+                }
             };
 
             if let NodeExpr::Group(ref block) = conn {
@@ -120,7 +52,7 @@ impl Context {
                 }
             }
 
-            let (sub_source, sub_sink) = self.process_node(conn);
+            let (sub_source, sub_sink) = self.process_node(conn, conn_mode);
             self.track_edge(node_span, &prev_sink, &sub_source);
 
             let prev_sink_ident = &prev_sink.0;
@@ -135,11 +67,11 @@ impl Context {
         (source, prev_sink)
     }
 
-    fn process_node(&mut self, node: NodeExpr) -> (Source, Sink) {
+    fn process_node(&mut self, node: NodeExpr, mode: Option<SchedulingMode>) -> (Source, Sink) {
         match node {
             NodeExpr::Declaration(task) => self.process_declaration(task),
             NodeExpr::Binding(binding) => self.process_binding(binding),
-            NodeExpr::Expression(expression) => self.process_expression(expression),
+            NodeExpr::Expression(expression) => self.process_expression(expression, mode),
             NodeExpr::Group(group) => self.process_group(group),
         }
     }
@@ -296,7 +228,17 @@ impl Context {
     /// Checks two types of expressions:
     /// - **A**: Single variable: `... -> some_sub_graph -> ...`
     /// - **B**: Complex: `Race(x, y)`
-    fn process_expression(&mut self, expr: syn::Expr) -> (Source, Sink) {
+    fn process_expression(
+        &mut self,
+        expr: syn::Expr,
+        mode: Option<SchedulingMode>,
+    ) -> (Source, Sink) {
+        let type_check_suffix = match mode {
+            Some(SchedulingMode::Selection) => quote! { .verify_selectable() },
+            Some(SchedulingMode::Parallel) => quote! { .verify_parallel() },
+            _ => quote! {},
+        };
+
         // Case A
         if let syn::Expr::Path(ref expr_path) = expr
             && expr_path.path.leading_colon.is_none()
@@ -309,7 +251,9 @@ impl Context {
                 self.unbound_types.insert(embedding.to_string());
 
                 let decl = quote! {
-                    let #bounds_ident = builder.append(AsGraphEntryProxy::as_entry_proxy(#expr));
+                    let #bounds_ident = builder.append(
+                        AsGraphEntryProxy::as_entry_proxy((#expr)#type_check_suffix)
+                    );
                 };
                 self.decls.push(decl);
 
@@ -327,7 +271,9 @@ impl Context {
         self.anon_id_counter += 1;
 
         let decl = quote! {
-            let #bounds_ident = builder.append(AsGraphEntryProxy::as_entry_proxy(#expr));
+            let #bounds_ident = builder.append(
+                AsGraphEntryProxy::as_entry_proxy((#expr)#type_check_suffix)
+            );
         };
         self.decls.push(decl);
 
@@ -379,6 +325,39 @@ impl Context {
                 span,
             });
         }
+    }
+
+    pub(super) fn evaluate_bounds(&self) -> (TokenStream2, TokenStream2) {
+        let source_count = self.compile_graph.sources().count();
+        let sink_count = self.compile_graph.sinks().count();
+
+        let has_selection_enter = self
+            .compile_graph
+            .sinks()
+            .any(|id| self.compile_graph.meta()[id].role_us() == UpstreamRole::Selector);
+
+        let has_selection_exit = self
+            .compile_graph
+            .sinks()
+            .any(|id| self.compile_graph.meta()[id].role_ds() == DownstreamRole::SelectionBranch);
+
+        let input_bound = if has_selection_enter {
+            quote! { Selection }
+        } else if source_count > 1 {
+            quote! { Parallel }
+        } else {
+            quote! { Regular }
+        };
+
+        let output_bound = if has_selection_exit {
+            quote! { Selection }
+        } else if sink_count > 1 {
+            quote! { Parallel }
+        } else {
+            quote! { Regular }
+        };
+
+        (input_bound, output_bound)
     }
 }
 

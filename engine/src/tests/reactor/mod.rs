@@ -59,21 +59,21 @@ fn nested_pipeline_composition() -> Result {
     declare_tags!(SpawnEnemies, Fight);
     declare_tags!(RollLoot, PickTreasure);
 
-    let mut room = Graph::new();
+    let mut room = IdentityGraph::new();
     add_nodes! {
           room,
           enter: Enter, exit: Exit,
     };
     room.add_edge(enter, exit);
 
-    let mut combat = Graph::new();
+    let mut combat = IdentityGraph::new();
     add_nodes! {
           combat,
           spawn: SpawnEnemies, fight: Fight,
     };
     combat.add_edge(spawn, fight);
 
-    let mut loot = Graph::new();
+    let mut loot = IdentityGraph::new();
     add_nodes! {
           loot,
           roll: RollLoot, pick: PickTreasure,
@@ -123,7 +123,7 @@ fn nested_pipeline_composition_macro() -> Result {
     declare_tags!(SpawnEnemies, Fight);
     declare_tags!(RollLoot, PickTreasure);
 
-    fn room(a: &Graph, b: &Graph) -> Graph {
+    fn room(a: &IdentityGraph, b: &IdentityGraph) -> IdentityGraph {
         orc! {
             Enter -> @a -> @b -> Exit;
         }
@@ -179,8 +179,8 @@ fn struct_expression() -> Result {
     declare_tags!(R, A, B, X, Y, X1, Y1);
 
     struct Race<'a> {
-        a: &'a Graph,
-        b: &'a Graph,
+        a: &'a IdentityGraph,
+        b: &'a IdentityGraph,
     }
 
     impl<'a> AsGraphEntryProxy<'a> for Race<'a> {
@@ -196,11 +196,11 @@ fn struct_expression() -> Result {
                 R -> ( @a | @b )
             };
 
-            GraphEntry::OwnedGraph(g)
+            GraphEntry::OwnedGraph(Box::new(g))
         }
     }
 
-    fn composer(x: &Graph, y: &Graph) -> Graph {
+    fn composer(x: &IdentityGraph, y: &IdentityGraph) -> IdentityGraph {
         orc!(
             A -> @Race { a: x, b: y } -> B;
         )

@@ -1,6 +1,12 @@
-use std::collections::{HashMap, VecDeque};
+use std::{
+    collections::{HashMap, VecDeque},
+    marker::PhantomData,
+};
 
-use crate::meta::{Marker, Meta};
+use crate::{
+    graph_bound::Bound,
+    meta::{Marker, Meta},
+};
 
 pub type NodeId = usize;
 
@@ -9,11 +15,12 @@ pub enum GraphError {
     CycleDetected,
 }
 
-#[derive(Default, Clone)]
-pub struct Graph {
+pub struct Graph<I: Bound, O: Bound> {
     pub(crate) in_degree: Vec<usize>,
     pub(crate) adj: Vec<Vec<NodeId>>,
     pub(crate) meta: Vec<Meta>,
+    _i: PhantomData<I>,
+    _o: PhantomData<O>,
 }
 
 #[derive(Clone)]
@@ -22,7 +29,7 @@ pub struct GraphBounds {
     pub sinks: Vec<NodeId>,
 }
 
-impl Graph {
+impl<I: Bound, O: Bound> Graph<I, O> {
     pub fn new() -> Self {
         Self::default()
     }
@@ -32,6 +39,8 @@ impl Graph {
             adj: vec![vec![]; meta.len()],
             in_degree: vec![0; meta.len()],
             meta,
+            _i: PhantomData,
+            _o: PhantomData,
         }
     }
 
@@ -68,7 +77,11 @@ impl Graph {
     ///       ├──> [x] ──> [c]
     /// [b] ──┘
     /// ```
-    pub fn merge(&mut self, sub: &Graph, at: Vec<NodeId>) -> GraphBounds {
+    pub fn merge<SubI: Bound, SubO: Bound>(
+        &mut self,
+        sub: &Graph<SubI, SubO>,
+        at: Vec<NodeId>,
+    ) -> GraphBounds {
         // Collect unique downstream neighbours of each node of `at` list
         // while counting broken edges
         let mut at_downstream = HashMap::new();
@@ -174,6 +187,30 @@ impl Graph {
     pub fn sinks(&self) -> impl Iterator<Item = NodeId> {
         let len = self.adj.len();
         (0..len).filter(|&id| self.adj[id].is_empty())
+    }
+}
+
+impl<I: Bound, O: Bound> Default for Graph<I, O> {
+    fn default() -> Self {
+        Self {
+            in_degree: vec![],
+            adj: vec![],
+            meta: vec![],
+            _i: PhantomData,
+            _o: PhantomData,
+        }
+    }
+}
+
+impl<I: Bound, O: Bound> Clone for Graph<I, O> {
+    fn clone(&self) -> Self {
+        Self {
+            in_degree: self.in_degree.clone(),
+            adj: self.adj.clone(),
+            meta: self.meta.clone(),
+            _i: PhantomData,
+            _o: PhantomData,
+        }
     }
 }
 

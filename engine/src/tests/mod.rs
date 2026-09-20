@@ -130,7 +130,7 @@ where
     }
 }
 
-impl Reactor {
+impl<'a> Reactor<'a> {
     fn map_nodes(&self) -> NodeMap {
         let mut s2i = HashMap::new();
         for (id, meta) in self.node_meta() {
