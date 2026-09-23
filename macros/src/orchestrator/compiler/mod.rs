@@ -1,68 +1,59 @@
-use action_orc_core::IdentityGraph;
+use action_orc_core::DownstreamRole;
 #[allow(unused)]
-use action_orc_core::{Graph as OrcGraph, GraphEntry, GraphError as OrcGraphError};
+use action_orc_core::{Graph as OrcGraph, GraphError as OrcGraphError};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
-use quote::{quote, quote_spanned};
+use quote::{format_ident, quote, quote_spanned};
 use std::collections::{HashMap, HashSet};
 use syn::Ident;
 
+use crate::orchestrator::compiler::errors::CodegenError;
+
 use super::{
-    ast::{self},
+    ast::{self, Bound, SyntaxTree},
     format_type,
 };
 
-mod codegen;
+use compile_graph::CompileGraph;
 
-type TypeStr = String;
+mod compile_graph;
+mod declaration;
+mod embedding;
+mod errors;
+mod graph;
+mod group;
+mod identity;
+mod misc;
 
 #[derive(Default)]
 struct Context {
-    compile_graph: IdentityGraph,
+    compile_graph: CompileGraph,
     decls: Vec<TokenStream2>,
     links: Vec<TokenStream2>,
-    parallel_group_id_counter: usize,
+    group_id_counter: usize,
     anon_id_counter: usize,
     node_id_map: HashMap<Ident, usize>,
-    anon_map: HashMap<Ident, TypeStr>,
-    unbound_types: HashSet<TypeStr>,
+    anon_map: HashMap<Ident, String>,
+    unbound_types: HashSet<String>,
+    embedding_expr: HashMap<Ident, TokenStream2>,
+    embedding_annotations: HashMap<Ident, (Bound, Bound)>,
+    embedding_idents: HashSet<String>,
     errors: Vec<CodegenError>,
 }
 
+struct IdFactory;
 struct Source(Ident);
 struct Sink(Ident);
 
-enum CodegenError {
-    DuplicateUnboundType {
-        type_key: String,
-        span: Span,
-    },
-    CircularDependency {
-        from: String,
-        to: String,
-        span: Span,
-    },
-    VariableCollision {
-        var: String,
-        span: Span,
-    },
-    MultiPivotSelector {
-        span: Span,
-    },
-    InvalidSelectionBranch {
-        span: Span,
-    },
-    Syn(syn::Error),
-}
-
-pub(super) fn generate(ast: ast::SyntaxTree) -> TokenStream {
+pub(super) fn generate(ast: SyntaxTree) -> TokenStream {
     let mut cx = Context::default();
 
-    for graph in ast.graphs {
+    for graph in &ast.graphs {
+        cx.compile_graph.note_new_line_entry();
         let _ = cx.process_graph(graph);
     }
 
-    let (input_bound, output_bound) = cx.evaluate_bounds();
+    let (input_bound, output_bound) = cx.compile_graph.evaluate_graph_bounds();
 
     let Context {
         decls,

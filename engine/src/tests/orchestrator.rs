@@ -190,17 +190,17 @@ fn orchestrator_topological_correctness() -> Result {
 }
 
 #[test]
-fn orchestrator_multiple_roots() -> Result {
-    declare_tags!(RootX, RootY, BarrierNode);
+fn orchestrator_multiple_sources() -> Result {
+    declare_tags!(SourceX, SourceY, BarrierNode);
 
     #[graph(
-        RootX -> b: BarrierNode;
-        RootY -> [b];
+        SourceX -> b: BarrierNode;
+        SourceY -> [b];
     )]
-    struct ParallelRootsGraph;
+    struct ForkSourcesGraph;
 
     let mut orchestrator = Orchestrator::new(
-        ParallelRootsGraph,
+        ForkSourcesGraph,
         Config {
             loop_schedule: false,
         },
@@ -214,8 +214,8 @@ fn orchestrator_multiple_roots() -> Result {
     assert_eq!(
         events,
         vec![
-            (map[RootX], NodeStatus::Started),
-            (map[RootY], NodeStatus::Started),
+            (map[SourceX], NodeStatus::Started),
+            (map[SourceY], NodeStatus::Started),
         ]
     );
 

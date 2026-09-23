@@ -12,8 +12,8 @@ SyntaxTree {
                 },
             ),
             conns: [
-                Expression(
-                    Expr::Struct {
+                Expression {
+                    expr: Expr::Struct {
                         attrs: [],
                         qself: None,
                         path: Path {
@@ -82,7 +82,8 @@ SyntaxTree {
                         dot2_token: None,
                         rest: None,
                     },
-                ),
+                    explicit_bounds: None,
+                },
                 Declaration(
                     Declaration {
                         var: None,

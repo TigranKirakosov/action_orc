@@ -20,21 +20,21 @@ fn base() -> Result {
         roles_us,
         vec![
             UpstreamRole::Selector,
-            UpstreamRole::Regular,
-            UpstreamRole::Regular,
-            UpstreamRole::Regular,
-            UpstreamRole::Regular,
+            UpstreamRole::Plain,
+            UpstreamRole::Plain,
+            UpstreamRole::Plain,
+            UpstreamRole::Plain,
         ]
     );
 
     assert_eq!(
         roles_ds,
         vec![
-            DownstreamRole::Regular,
-            DownstreamRole::SelectionBranch,
-            DownstreamRole::SelectionBranch,
-            DownstreamRole::SelectionBranch,
-            DownstreamRole::Regular,
+            DownstreamRole::Plain,
+            DownstreamRole::SelectionMember,
+            DownstreamRole::SelectionMember,
+            DownstreamRole::SelectionMember,
+            DownstreamRole::Plain,
         ]
     );
 
@@ -99,7 +99,7 @@ fn sequential_selection() -> Result {
 }
 
 #[test]
-fn selection_to_parallel() -> Result {
+fn selection_to_fork() -> Result {
     declare_tags!(A, B, X, Y, Z);
 
     #[graph(X -> (A ? B) -> (Y | Z))]
@@ -228,7 +228,7 @@ fn nowhere_to_backtrack() -> Result {
 }
 
 #[test]
-fn backtrack_into_parallel_group() -> Result {
+fn backtrack_into_fork_group() -> Result {
     declare_tags!(A, X, Y);
 
     #[graph((X | Y) -> A)]
@@ -245,7 +245,7 @@ fn backtrack_into_parallel_group() -> Result {
     assert_eq!(
         reactor.process(cmd::backtrack()).err(),
         Some(ReactorError::Scheduler(
-            SchedulerError::BacktrackToParallelBranch {
+            SchedulerError::BacktrackToForkMember {
                 from: NodeDisplay::from(map[A], reactor.get_meta(map[A])),
                 to: NodeDisplay::from(map[Y], reactor.get_meta(map[Y])),
             }
@@ -256,7 +256,7 @@ fn backtrack_into_parallel_group() -> Result {
 }
 
 #[test]
-fn backtrack_from_parallel_group() -> Result {
+fn backtrack_from_fork_group() -> Result {
     declare_tags!(A, X, Y);
 
     #[graph(A -> (X | Y))]
@@ -272,7 +272,7 @@ fn backtrack_from_parallel_group() -> Result {
     assert_eq!(
         reactor.process(cmd::backtrack()).err(),
         Some(ReactorError::Scheduler(
-            SchedulerError::BacktrackFromParallelBranch {
+            SchedulerError::BacktrackFromForkMember {
                 from: NodeDisplay::from(map[Y], reactor.get_meta(map[Y])),
                 to: NodeDisplay::from(map[X], reactor.get_meta(map[X])),
             }

@@ -1,15 +1,9 @@
-use crate::{
-    DownstreamRole, Graph, GraphBounds, GraphEntry, Meta, NodeId, UpstreamRole, graph_bound::Bound,
-    graph_entry::AnyGraph,
-};
-use std::collections::HashMap;
+use super::*;
 
 #[derive(Default)]
 pub struct GraphBuilder {
     pub meta: Vec<Meta>,
     pub edges: Vec<(NodeId, NodeId)>,
-    // Use an erased *const () pointer to provide robust caching keys for trait objects
-    pub(crate) graph_cache: HashMap<*const (), GraphBounds>,
 }
 
 impl GraphBuilder {
@@ -17,38 +11,35 @@ impl GraphBuilder {
         Self {
             meta: Vec::new(),
             edges: Vec::new(),
-            graph_cache: HashMap::new(),
         }
     }
 
-    /// Normalizes [GraphEntry] into unified [GraphBounds]
-    pub fn append<'a>(&mut self, entry: GraphEntry<'a>) -> GraphBounds {
-        match entry {
-            GraphEntry::Node(meta) => {
-                let node_id = self.meta.len();
-                self.meta.push(meta);
+    /// Appends a typed graph, preserving I/O bounds for compile-time assertions
+    pub fn append<I: Bound, O: Bound>(&mut self, g: &Graph<I, O>) -> GraphBounds {
+        self.merge_layout(g)
+    }
 
-                GraphBounds {
-                    sources: vec![node_id],
-                    sinks: vec![node_id],
-                }
-            }
-            GraphEntry::OwnedGraph(sub_graph) => self.merge_layout(sub_graph.as_ref()),
-            GraphEntry::BorrowedGraph(sub_graph) => {
-                let ptr = sub_graph.as_any() as *const _ as *const ();
-                if let Some(cached_bounds) = self.graph_cache.get(&ptr) {
-                    return cached_bounds.clone();
-                }
+    /// Appends an already-erased layout (e.g., from [IntoGraphLayout::into_graph_layout]).
+    ///
+    /// Intended for complex expressions like
+    /// ```ignore
+    /// @Race { a: x, b: y }`
+    /// ```
+    /// whose type is not [Graph<I, O>]
+    pub fn append_graph_layout(&mut self, g: &dyn GraphLayout) -> GraphBounds {
+        self.merge_layout(g)
+    }
 
-                let bounds = self.merge_layout(sub_graph);
-                self.graph_cache.insert(ptr, bounds.clone());
-
-                bounds
-            }
+    pub fn append_node<T: Marker>(&mut self) -> GraphBounds {
+        let node_id = self.meta.len();
+        self.meta.push(Meta::of::<T>());
+        GraphBounds {
+            sources: vec![node_id],
+            sinks: vec![node_id],
         }
     }
 
-    fn merge_layout(&mut self, sub_graph: &dyn AnyGraph) -> GraphBounds {
+    fn merge_layout(&mut self, sub_graph: &dyn GraphLayout) -> GraphBounds {
         let offset = self.meta.len();
 
         for meta in sub_graph.meta() {
@@ -99,8 +90,7 @@ impl GraphBuilder {
     pub fn set_downstream_role(&mut self, node_id: &NodeId, role: DownstreamRole) {
         // TODO: research on how to properly finilize downstream role of a node
         let current_ds = self.meta[*node_id].role_ds;
-        if current_ds == DownstreamRole::ParallelBranch
-            || current_ds == DownstreamRole::SelectionBranch
+        if current_ds == DownstreamRole::ForkMember || current_ds == DownstreamRole::SelectionMember
         {
             return;
         }
@@ -108,7 +98,7 @@ impl GraphBuilder {
     }
 
     /// Generates the finalized topology, binding it to the specified
-    /// compiled type-state parameters at the boundary entrypoint
+    /// compiled type-state parameters at the boundary
     pub fn build<I: Bound, O: Bound>(self) -> Graph<I, O> {
         let mut graph = Graph::from_meta(self.meta);
 

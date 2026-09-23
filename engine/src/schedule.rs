@@ -3,18 +3,18 @@ use action_orc_core::*;
 
 /// # Rules
 /// ## Resolving
-/// Any node that is **not** marked with [Role::Selector] allowed issue [ScheduleDirective::Resolve]
+/// Any node that is **not** marked with [UpstreamRole::Selector] allowed issue [ScheduleDirective::Resolve]
 ///
 /// ## Advancing
-/// Only node that is marked with [Role::Selector] allowed to issue [ScheduleDirective::Advance] with [ScheduleDirective::Advance::target]
+/// Only node that is marked with [UpstreamRole::Selector] allowed to issue [ScheduleDirective::Advance] with [ScheduleDirective::Advance::target]
 ///
 /// ### Valid
 /// `X -> (A ? B)`
-/// - X has [Role::Selector] due to arrow pointing to a selection group (each node has [Role::SelectionBranch])
+/// - X has [UpstreamRole::Selector] due to arrow pointing to a selection group (each node has [DownstreamRole::SelectionMember])
 ///
 /// ### Invalid
 /// `X -> Y` nor `X -> (A | B)` nor `X -> (A, B)`
-/// - X has no [Role::Selector]
+/// - X has no [UpstreamRole::Selector]
 ///
 /// ## Backtracking
 /// ### Valid
@@ -52,11 +52,11 @@ pub enum SchedulerError {
         target: NodeDisplay,
     },
     NowhereToBacktrack,
-    BacktrackToParallelBranch {
+    BacktrackToForkMember {
         from: NodeDisplay,
         to: NodeDisplay,
     },
-    BacktrackFromParallelBranch {
+    BacktrackFromForkMember {
         from: NodeDisplay,
         to: NodeDisplay,
     },
@@ -68,15 +68,15 @@ pub struct NodeDisplay {
     name: &'static str,
 }
 
-pub(crate) struct Schedule<'a> {
-    pub(crate) graph: Box<dyn AnyGraph + 'a>,
+pub(crate) struct Schedule {
+    pub(crate) graph: Box<dyn GraphLayout>,
     pub(crate) in_degree: Vec<usize>,
     pub(crate) finished_count: usize,
     pub(crate) history: Vec<NodeId>,
 }
 
-impl<'a> Schedule<'a> {
-    pub(crate) fn from(graph: Box<dyn AnyGraph + 'a>) -> Self {
+impl Schedule {
+    pub(crate) fn from(graph: Box<dyn GraphLayout>) -> Self {
         let in_degree = graph.in_degree();
 
         Self {
@@ -129,7 +129,7 @@ impl<'a> Schedule<'a> {
                     });
                 }
 
-                if target_meta.role_ds() != DownstreamRole::SelectionBranch {
+                if target_meta.role_ds() != DownstreamRole::SelectionMember {
                     return Err(SchedulerError::InvalidAdvanceTarget {
                         source: NodeDisplay::from(pivot, source_meta),
                         target: NodeDisplay::from(target, target_meta),
@@ -156,21 +156,21 @@ impl<'a> Schedule<'a> {
                 let parent = self.history[self.history.len() - 2];
                 let parent_meta = &self.graph.meta()[parent];
 
-                if current_meta.role_ds() == DownstreamRole::ParallelBranch {
-                    return Err(SchedulerError::BacktrackFromParallelBranch {
+                if current_meta.role_ds() == DownstreamRole::ForkMember {
+                    return Err(SchedulerError::BacktrackFromForkMember {
                         from: NodeDisplay::from(current, current_meta),
                         to: NodeDisplay::from(parent, parent_meta),
                     });
                 }
 
                 if parent_meta.role_us() == UpstreamRole::Selector
-                    && current_meta.role_ds() == DownstreamRole::SelectionBranch
+                    && current_meta.role_ds() == DownstreamRole::SelectionMember
                 {
                     return Ok(());
                 }
 
-                if parent_meta.role_ds() == DownstreamRole::ParallelBranch {
-                    return Err(SchedulerError::BacktrackToParallelBranch {
+                if parent_meta.role_ds() == DownstreamRole::ForkMember {
+                    return Err(SchedulerError::BacktrackToForkMember {
                         from: NodeDisplay::from(current, current_meta),
                         to: NodeDisplay::from(parent, parent_meta),
                     });
@@ -299,17 +299,11 @@ impl std::fmt::Display for SchedulerError {
             SchedulerError::NowhereToBacktrack => {
                 write!(f, "Attempt to backtrack to non-existent point in history.")
             }
-            SchedulerError::BacktrackToParallelBranch { from, to } => {
-                write!(
-                    f,
-                    "Attempt to backtrack to parallel branch {to} from {from}"
-                )
+            SchedulerError::BacktrackToForkMember { from, to } => {
+                write!(f, "Attempt to backtrack to Fork member {to} from {from}")
             }
-            SchedulerError::BacktrackFromParallelBranch { from, to } => {
-                write!(
-                    f,
-                    "Attempt to backtrack from parallel branch {from} to {to}"
-                )
+            SchedulerError::BacktrackFromForkMember { from, to } => {
+                write!(f, "Attempt to backtrack from Fork member {from} to {to}")
             }
         }
     }

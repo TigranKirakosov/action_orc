@@ -1,12 +1,10 @@
 use proc_macro::TokenStream;
 use proc_macro2::TokenStream as TokenStream2;
 use quote::quote;
-use syn::Token;
-use syn::punctuated::Punctuated;
-use syn::{Fields, FieldsNamed, Ident, ItemStruct, Meta, Visibility, parse_macro_input};
+use syn::{Ident, ItemStruct, parse_macro_input};
 
 pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
-    let mut input_struct = parse_macro_input!(item as ItemStruct);
+    let input_struct = parse_macro_input!(item as ItemStruct);
     let name = &input_struct.ident;
     let generics = &input_struct.generics;
 
@@ -17,92 +15,52 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
         quote! { compile_error!("Missing required pipeline layout configuration inside #[graph(...)]."); }
     };
 
-    let mut param_idents: Vec<Ident> = Vec::new();
+    let field_idents: Vec<Ident> = input_struct
+        .fields
+        .iter()
+        .filter_map(|f| f.ident.clone())
+        .collect();
 
-    input_struct.attrs.retain(|attr| {
-        if attr.path().is_ident("params") {
-            if let Meta::List(meta_list) = &attr.meta {
-                let nested_res =
-                    meta_list.parse_args_with(Punctuated::<Ident, Token![,]>::parse_terminated);
-                if let Ok(idents) = nested_res {
-                    param_idents.extend(idents.into_iter());
-                }
-            }
-            false
-        } else {
-            true
+    let destructure = if !field_idents.is_empty() {
+        quote! {
+            #[deny(unused_variables)]
+            let Self { #(#field_idents),* } = self;
         }
-    });
+    } else {
+        quote! {}
+    };
 
-    let has_params = !param_idents.is_empty();
-    if has_params {
-        // Schema: pub a: &'a dyn AnyGraph
-        let generated_fields = param_idents.iter().map(|id| syn::Field {
-            attrs: Vec::new(),
-            vis: Visibility::Public(syn::token::Pub::default()),
-            mutability: syn::FieldMutability::None,
-            ident: Some(id.clone()),
-            colon_token: Some(syn::token::Colon::default()),
-            ty: syn::parse_quote! { &'a dyn AnyGraph },
-        });
+    // A unit struct (no fields, no generics) can be referenced inside `orc!` as a
+    // bare, non-`@` identifier and is then expanded as a sub-graph.
+    // This requires the `IsSubGraph + Default + IntoGraphLayout` dispatch to hold, so we derive
+    // `Default` and mark it `IsSubGraph`.
+    // Structs with fields are only usable via the `@` embedding operator and need neither derive nor the marker.
+    let is_unit = field_idents.is_empty() && generics.params.is_empty();
 
-        let mut fields_named = FieldsNamed {
-            brace_token: syn::token::Brace::default(),
-            named: Punctuated::new(),
-        };
-        for field in generated_fields {
-            fields_named.named.push(field);
+    let final_struct = if is_unit {
+        quote! {
+            #[derive(Default)]
+            #input_struct
         }
-        input_struct.fields = Fields::Named(fields_named);
-    }
+    } else {
+        quote! { #input_struct }
+    };
 
     let (impl_generics, ty_generics, where_clause) = generics.split_for_impl();
 
-    let (final_impl_generics, final_ty_generics, final_struct) =
-        // Presence of #[params(x, y, z)] means we must inject <'a> lifetime to
-        // support 'pub member: &'a dyn AnyGraph' contract
-        if has_params || generics.lifetimes().next().is_some() {
-            let current_struct = if generics.lifetimes().next().is_none() {
-                let mut modified_struct = input_struct.clone();
-                modified_struct
-                    .generics
-                    .params
-                    .push(syn::parse_quote! { 'a });
-                quote! { #modified_struct }
-            } else {
-                quote! { #input_struct }
-            };
+    // Users declare struct fields manually (including lifetime annotations).
+    // A unit struct has no `'a` to reference, so the impl gets a fresh `<'a>`.
+    // Otherwise we reuse the struct's own generics.
+    let has_lt = generics.lifetimes().next().is_some();
+    let (final_impl_generics, final_ty_generics) = if has_lt {
+        (quote! { #impl_generics }, quote! { #ty_generics })
+    } else {
+        (quote! { <'a> }, quote! {})
+    };
 
-            let impl_g = if generics.lifetimes().next().is_some() {
-                quote! { #impl_generics }
-            } else {
-                quote! { <'a> }
-            };
-            let ty_g = if generics.lifetimes().next().is_some() {
-                quote! { #ty_generics }
-            } else {
-                quote! { <'a> }
-            };
-
-            (impl_g, ty_g, current_struct)
-        }
-        // Unit struct derives Default so `orc!` macro can make instance to access transitive traits
-        else {
-            (
-                quote! { <'a> },
-                quote! {},
-                quote! {
-                    #[derive(Default)]
-                    #input_struct
-                },
-            )
-        };
-
-    let destructure_stmt = if has_params {
+    let is_subgraph_impl = if is_unit {
         quote! {
-            // Presence of unused variables hints user forgot to add '@' prefix before compund subgraph
-            #[deny(unused_variables)]
-            let Self { #(#param_idents),* } = self;
+            impl IsSubGraph for #name {}
         }
     } else {
         quote! {}
@@ -111,17 +69,17 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
     let expanded = quote! {
         #final_struct
 
-        impl #final_impl_generics IsSubGraph for #name #final_ty_generics #where_clause {}
+        #is_subgraph_impl
 
-        impl #final_impl_generics AsGraphEntryProxy<'a> for #name #final_ty_generics #where_clause {
-            fn as_entry_proxy(self) -> GraphEntry<'a> {
-                #destructure_stmt
+        impl #final_impl_generics IntoGraphLayout<'a> for #name #final_ty_generics #where_clause {
+            fn into_graph_layout(self) -> Box<dyn GraphLayout + 'a> {
+                #destructure
 
                 let compiled_graph = orc! {
                     #dsl_tokens
                 };
 
-                GraphEntry::OwnedGraph(Box::new(compiled_graph))
+                Box::new(compiled_graph)
             }
         }
     };

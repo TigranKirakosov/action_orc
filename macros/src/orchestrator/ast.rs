@@ -1,3 +1,6 @@
+use proc_macro2::Span;
+use quote::{ToTokens, quote};
+use syn::spanned::Spanned;
 use syn::{Expr, Ident, Type};
 
 use super::format_type;
@@ -26,10 +29,14 @@ pub(super) enum NodeExpr {
     /// A bound node identifier reference, e.g. [in]
     Binding(Ident),
 
-    /// Any expression that results in a [action_orc_core::AsGraphEntry]
-    Expression(Expr),
+    /// Any expression that results in a graph-like value (embedding via `@`).
+    /// Optionally carries explicit I/O bound annotations like `@[Fork; Single] expr`.
+    Expression {
+        expr: Expr,
+        explicit_bounds: Option<(Bound, Bound)>,
+    },
 
-    /// (A | B | C) or (A, B, C) or (A -> B -> C) or (A : B : C)
+    /// (A | B | C) or (A, B, C) or (A -> B -> C) or (A ? B ? C)
     Group(GroupBlock),
 }
 
@@ -53,9 +60,27 @@ pub(super) enum SchedulingMode {
     /// (A, B) or (A -> B)
     Sequence,
     /// (A | B | C)
-    Parallel,
+    Fork,
     /// (A : B : C)
     Selection,
+}
+
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum Bound {
+    Single,
+    Fork,
+    Ambiguous,
+}
+
+impl ToTokens for Bound {
+    fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
+        let ts = match self {
+            Bound::Single => quote! { Single },
+            Bound::Fork => quote! { Fork },
+            Bound::Ambiguous => quote! { Ambiguous },
+        };
+        tokens.extend(ts);
+    }
 }
 
 impl std::fmt::Debug for Declartaion {
@@ -66,5 +91,32 @@ impl std::fmt::Debug for Declartaion {
             .field("var", &self.var.clone().map(|var| var.to_string()))
             .field("typ", &type_string)
             .finish()
+    }
+}
+
+impl Graph {
+    pub(crate) fn span(&self) -> Span {
+        self.span_info.span
+    }
+}
+
+impl GroupBlock {
+    pub(crate) fn span(&self) -> Span {
+        self.span_info.span
+    }
+}
+
+impl NodeExpr {
+    pub(crate) fn span(&self) -> Span {
+        match self {
+            NodeExpr::Declaration(task) => task
+                .var
+                .as_ref()
+                .map(|v| v.span())
+                .unwrap_or_else(|| task.typ.span()),
+            NodeExpr::Binding(var) => var.span(),
+            NodeExpr::Expression { expr, .. } => expr.span(),
+            NodeExpr::Group(block) => block.span(),
+        }
     }
 }

@@ -14,7 +14,7 @@ SyntaxTree {
             conns: [
                 Group(
                     GroupBlock {
-                        mode: Parallel,
+                        mode: Fork,
                         graphs: [
                             Graph {
                                 entry: Declaration(

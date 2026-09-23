@@ -4,7 +4,7 @@ use proc_macro2::{Delimiter, Span, TokenStream as TokenStream2, TokenTree};
 use winnow::{
     ModalResult, Parser,
     combinator::{alt, opt, preceded, repeat, separated},
-    error::{ErrMode, ParserError, StrContext, StrContextValue},
+    error::{ContextError, ErrMode, ParserError, StrContext, StrContextValue},
     stream::Stream,
 };
 
@@ -21,12 +21,6 @@ mod tests;
 pub(super) struct SpanInfo {
     pub(super) span: Span,
     pub(super) at_call_site: bool,
-}
-
-impl PartialEq for SpanInfo {
-    fn eq(&self, other: &Self) -> bool {
-        self.at_call_site == other.at_call_site
-    }
 }
 
 pub(crate) fn current_span(input: &[TokenTree]) -> SpanInfo {
@@ -86,12 +80,6 @@ fn node_expr<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseErro
 /// 1) a: A
 /// 2) A
 fn decl<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>> {
-    if let Some(TokenTree::Group(g)) = input.first() {
-        if g.delimiter() == Delimiter::Bracket || g.delimiter() == Delimiter::Parenthesis {
-            return Err(ErrMode::Backtrack(ParseError::from_input(input)));
-        }
-    }
-
     alt((
         // var: scenario::Entering<Dungeon>
         (ident, punct(':'), type_path).map(|(var, _, typ)| Declartaion {
@@ -124,7 +112,48 @@ fn binding<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<
 
 fn expr_block<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>> {
     punct('@').parse_next(input)?;
-    struct_expr.map(NodeExpr::Expression).parse_next(input)
+    // Optional bound annotation: `[Fork; Single]` or `[Fork]`
+    let explicit_bounds = opt(enclosed(
+        Delimiter::Bracket,
+        |input| {
+            let i = bound.parse_next(input)?;
+            let o = match opt(punct(';')).parse_next(input)? {
+                Some(()) => bound.parse_next(input)?,
+                None => i,
+            };
+            Ok((i, o))
+        },
+        "bounds",
+    ))
+    .parse_next(input)?;
+
+    let expr = struct_expr.parse_next(input)?;
+    Ok(NodeExpr::Expression {
+        expr,
+        explicit_bounds,
+    })
+}
+
+fn bound<'a>(input: &mut &'a [TokenTree]) -> ModalResult<Bound, ParseError<'a>> {
+    let checkpoint = input.checkpoint();
+    match input.first() {
+        Some(TokenTree::Ident(id)) if id == "Fork" => {
+            *input = &input[1..];
+            Ok(Bound::Fork)
+        }
+        Some(TokenTree::Ident(id)) if id == "Single" => {
+            *input = &input[1..];
+            Ok(Bound::Single)
+        }
+        _ => {
+            input.reset(&checkpoint);
+            Err(ErrMode::Backtrack(ParseError {
+                span_info: current_span(input),
+                inner: ContextError::from_input(input),
+                input: *input,
+            }))
+        }
+    }
 }
 
 /// 1) (A | B | C)
@@ -136,7 +165,7 @@ fn group<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a
         Delimiter::Parenthesis,
         move |i| {
             alt((
-                parallel_block(group_span.clone()),
+                fork_block(group_span.clone()),
                 sequence_block(group_span.clone()),
                 selection_block(group_span.clone()),
             ))
@@ -150,7 +179,7 @@ fn group<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a
     Ok(expr)
 }
 
-fn parallel_block<'a>(
+fn fork_block<'a>(
     span_info: SpanInfo,
 ) -> impl FnMut(&mut &'a [TokenTree]) -> ModalResult<GroupBlock, ParseError<'a>> {
     move |input: &mut &'a [TokenTree]| {
@@ -158,7 +187,7 @@ fn parallel_block<'a>(
         match separated(2.., graph, punct('|')).parse_next(input) {
             Ok(graphs) => {
                 let block = GroupBlock {
-                    mode: SchedulingMode::Parallel,
+                    mode: SchedulingMode::Fork,
                     graphs,
                     span_info,
                 };
@@ -228,4 +257,10 @@ fn arrow<'a>(input: &mut &'a [TokenTree]) -> ModalResult<(), ParseError<'a>> {
         )))
         .void()
         .parse_next(input)
+}
+
+impl PartialEq for SpanInfo {
+    fn eq(&self, other: &Self) -> bool {
+        self.at_call_site == other.at_call_site
+    }
 }

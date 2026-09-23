@@ -1,0 +1,38 @@
+---
+source: macros/src/orchestrator/parser/tests/mod.rs
+expression: ast
+---
+SyntaxTree {
+    graphs: [
+        Graph {
+            entry: Expression {
+                expr: Expr::Path {
+                    attrs: [],
+                    qself: None,
+                    path: Path {
+                        leading_colon: None,
+                        segments: [
+                            PathSegment {
+                                ident: Ident(
+                                    fork_single,
+                                ),
+                                arguments: PathArguments::None,
+                            },
+                        ],
+                    },
+                },
+                explicit_bounds: Some(
+                    (
+                        Fork,
+                        Single,
+                    ),
+                ),
+            },
+            conns: [],
+            span_info: SpanInfo {
+                span: Span,
+                at_call_site: false,
+            },
+        },
+    ],
+}

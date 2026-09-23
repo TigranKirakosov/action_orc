@@ -7,7 +7,7 @@ use std::{
     },
 };
 
-use action_orc_core::{AsGraphEntryProxy, Meta, NodeId};
+use action_orc_core::{IntoGraphLayout, Meta, NodeId};
 
 use crate::{Listener, NodeCommand, NodeEvent, NodeStatus, Reactor, ReactorError};
 
@@ -46,8 +46,8 @@ struct CommandsChannel {
     rx: Mutex<Receiver<NodeCommand>>,
 }
 
-pub struct Orchestrator<'a> {
-    pub(crate) reactor: Reactor<'a>,
+pub struct Orchestrator {
+    pub(crate) reactor: Reactor,
     event_queue: EventQueue,
     commands_channel: CommandsChannel,
     config: Config,
@@ -55,8 +55,11 @@ pub struct Orchestrator<'a> {
     in_flight: usize,
 }
 
-impl<'a> Orchestrator<'a> {
-    pub fn new<G: AsGraphEntryProxy<'a>>(graph: G, config: Config) -> Result<Self, ReactorError> {
+impl Orchestrator {
+    pub fn new<G: IntoGraphLayout<'static>>(
+        graph: G,
+        config: Config,
+    ) -> Result<Self, ReactorError> {
         let commands_channel = CommandsChannel::new();
         let event_queue = EventQueue::default();
         let mut reactor = Reactor::from(graph);

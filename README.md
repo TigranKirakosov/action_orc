@@ -8,13 +8,10 @@ A declarative DSL for composing hierarchical execution graphs in Rust.
 - Drive action transitions with customizable gating logic
 
 ## Planned Features
-- [x] fluent and complete [DSL](DSL.md):
-    - [x] IDE support
-    - [x] compilation error spans
-    - [x] compile-time detection of circular dependencies
-- [ ] control directives:
-    - [ ] [*race*](DSL.md#race)
-    - [ ] [*fallback*](DSL.md#fallback)
+- [ ] fluent and complete:
+    - [ ] IDE support
+    - [ ] compilation error spans
+    - [ ] compile-time detection of circular dependencies
 - [ ] graph visualizer
 
 ## Planned Integrations
@@ -27,9 +24,9 @@ A declarative DSL for composing hierarchical execution graphs in Rust.
 - Map dependencies: `lhs -> rhs` (i.e., **lhs** blocks **rhs**)
 - Bind already declared nodes: `[b] -> y`
 - Compose graphs: dynamically embed sub-graphs (`A -> sub -> B`)
-- Group nodes into ordered *Sequences* or *Parallel* branches:
+- Group nodes into ordered *Sequences* or *Fork* branches:
     - Sequence block: `(a, b, c)`
-    - Parallel block: `(x | y | z)`
+    - Fork block: `(x | y | z)`
 
 ```rust
 use action_orc::*;
@@ -43,7 +40,7 @@ fn warchief_campaign(reinforce: &Graph) -> Graph {
             (Defend | RequestReinforcements) -> @reinforce,
         );
 
-        // Define second parallel timline, linked with the first one by [gather] and @reinforce nodes
+        // Define second fork timline, linked with the first one by [gather] and @reinforce nodes
         prepare: PrepareCampaign -> (
             [gather] -> BuildWarmachines
             | TrainGrunts

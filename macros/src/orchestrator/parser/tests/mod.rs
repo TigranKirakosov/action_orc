@@ -49,7 +49,7 @@ fn sequence_group_syntax() {
 }
 
 #[test]
-fn parallel_group_syntax() {
+fn fork_group_syntax() {
     let tokens = tokenize(
         "
          X -> (A -> B | C -> D) -> Y;
@@ -71,6 +71,20 @@ fn selection_group_syntax() {
 
     let ast = parse(tokens).unwrap();
 
+    insta::assert_debug_snapshot!(ast);
+}
+
+#[test]
+fn bound_annotation_syntax() {
+    let tokens = tokenize("@[Fork; Single] fork_single;");
+    let ast = parse(tokens).unwrap();
+    insta::assert_debug_snapshot!(ast);
+}
+
+#[test]
+fn bound_annotation_splat_syntax() {
+    let tokens = tokenize("@[Fork] both_fork;");
+    let ast = parse(tokens).unwrap();
     insta::assert_debug_snapshot!(ast);
 }
 

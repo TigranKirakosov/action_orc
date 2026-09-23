@@ -6,13 +6,13 @@ struct TaskA;
 struct TaskB;
 struct TaskC;
 
-fn combat_fn() -> IdentityGraph {
+fn combat_fn() -> PlainGraph {
     orc! {
         TaskA -> TaskB;
     }
 }
 
-fn loot_fn() -> IdentityGraph {
+fn loot_fn() -> PlainGraph {
     orc! {
         TaskC;
     }
@@ -27,7 +27,7 @@ fn main() {
         Enter -> @combat -> @loot -> Exit;
     };
 
-    let _parallel_composed = orc! {
+    let _fork_composed = orc! {
         Enter -> ( TaskA | @combat | TaskB ) -> Exit;
     };
 

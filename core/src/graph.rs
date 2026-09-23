@@ -4,7 +4,7 @@ use std::{
 };
 
 use crate::{
-    graph_bound::Bound,
+    bound::Bound,
     meta::{Marker, Meta},
 };
 
@@ -52,7 +52,8 @@ impl<I: Bound, O: Bound> Graph<I, O> {
         self.adj.len() - 1
     }
 
-    /// Adds a dependency `a -> b` and increments `b`'s dependants count
+    /// Adds a dependency `a -> b` and increments `b`'s dependants count.\
+    /// Skips adding duplicate edges.
     pub fn add_edge(&mut self, lhs: NodeId, rhs: NodeId) {
         if self.adj[lhs].contains(&rhs) {
             return;

@@ -59,21 +59,21 @@ fn nested_pipeline_composition() -> Result {
     declare_tags!(SpawnEnemies, Fight);
     declare_tags!(RollLoot, PickTreasure);
 
-    let mut room = IdentityGraph::new();
+    let mut room = PlainGraph::new();
     add_nodes! {
           room,
           enter: Enter, exit: Exit,
     };
     room.add_edge(enter, exit);
 
-    let mut combat = IdentityGraph::new();
+    let mut combat = PlainGraph::new();
     add_nodes! {
           combat,
           spawn: SpawnEnemies, fight: Fight,
     };
     combat.add_edge(spawn, fight);
 
-    let mut loot = IdentityGraph::new();
+    let mut loot = PlainGraph::new();
     add_nodes! {
           loot,
           roll: RollLoot, pick: PickTreasure,
@@ -123,7 +123,7 @@ fn nested_pipeline_composition_macro() -> Result {
     declare_tags!(SpawnEnemies, Fight);
     declare_tags!(RollLoot, PickTreasure);
 
-    fn room(a: &IdentityGraph, b: &IdentityGraph) -> IdentityGraph {
+    fn room(a: &PlainGraph, b: &PlainGraph) -> PlainGraph {
         orc! {
             Enter -> @a -> @b -> Exit;
         }
@@ -173,18 +173,18 @@ fn nested_pipeline_composition_macro() -> Result {
     Ok(())
 }
 
-/// Verifies [AsGraphProxy] and '@' expression prefix work in conjuction
+/// Verifies `IntoGraphLayout` and the '@' expression prefix work in conjunction
 #[test]
 fn struct_expression() -> Result {
     declare_tags!(R, A, B, X, Y, X1, Y1);
 
     struct Race<'a> {
-        a: &'a IdentityGraph,
-        b: &'a IdentityGraph,
+        a: &'a PlainGraph,
+        b: &'a PlainGraph,
     }
 
-    impl<'a> AsGraphEntryProxy<'a> for Race<'a> {
-        fn as_entry_proxy(self) -> GraphEntry<'a> {
+    impl<'a> IntoGraphLayout<'a> for Race<'a> {
+        fn into_graph_layout(self) -> Box<dyn GraphLayout + 'a> {
             // Should work too
             // let g = orc! {
             //     R -> ( @self.a | @self.b )
@@ -196,11 +196,11 @@ fn struct_expression() -> Result {
                 R -> ( @a | @b )
             };
 
-            GraphEntry::OwnedGraph(Box::new(g))
+            Box::new(g)
         }
     }
 
-    fn composer(x: &IdentityGraph, y: &IdentityGraph) -> IdentityGraph {
+    fn composer(x: &PlainGraph, y: &PlainGraph) -> PlainGraph {
         orc!(
             A -> @Race { a: x, b: y } -> B;
         )
@@ -246,18 +246,22 @@ fn struct_expression_attribute_macro() -> Result {
     declare_tags!(R, A, B, X, Y, X1, Y1, O, K);
 
     #[graph(R -> (@a | @b))]
-    #[params(a, b)]
-    struct Race;
+    struct Race {
+        a: PlainGraph,
+        b: PlainGraph,
+    }
 
     #[graph(O -> K)]
     struct JustAContainer;
 
     #[graph(A -> @Race { a: x, b: y } -> JustAContainer -> B)]
-    #[params(x, y)]
-    struct Composer;
+    struct Composer {
+        x: PlainGraph,
+        y: PlainGraph,
+    }
 
-    let x = &orc!(X -> X1;);
-    let y = &orc!(Y -> Y1;);
+    let x = orc!(X -> X1;);
+    let y = orc!(Y -> Y1;);
 
     let graph = Composer { x, y };
 

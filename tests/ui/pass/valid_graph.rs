@@ -6,27 +6,27 @@ struct B;
 struct C;
 struct L;
 
-// Define parametrized graph
+// Parametrized graph: fields declare the sub-graphs referenced after `@`.
 #[graph( R -> (@a | @b) )]
-#[params(a, b)]
-struct Race;
+struct Race<'a> {
+    a: &'a Graph<Single, Single>,
+    b: &'a Graph<Single, Single>,
+}
 
-// Define unit graph
+// Unit graph: a #[graph]-decorated unit struct may be embedded without `@`.
 #[graph( A -> B )]
 struct Unit;
 
-// Embed unit graph without '@' prefix
+// Embed unit graph without '@' prefix (bare unit struct with #[graph]).
 #[graph( Unit -> C )]
 struct EmbedVariantOne;
 
-// Embed unit graph wit '@' prefix
-#[graph( @Unit -> C )]
-struct EmbedVariantTwo;
-
-// Embed compound graph strictly with '@' prefix
+// Embed compound graph strictly with '@' prefix and struct expression.
 #[graph( @Race { a: x, b: y } -> C )]
-#[params(x, y)]
-struct EmbedVariantThree;
+struct EmbedVariantThree<'a> {
+    x: &'a Graph<Single, Single>,
+    y: &'a Graph<Single, Single>,
+}
 
 fn main() {
     // Implicit Leaf markers declaration

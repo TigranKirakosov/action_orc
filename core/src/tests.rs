@@ -4,7 +4,7 @@ use crate::*;
 fn simple_graph() {
     declare_tags!(A, B, C, D, E, F);
 
-    let mut g = Graph::<Regular, Regular>::new();
+    let mut g = PlainGraph::new();
     add_nodes!(
         g,
         a: A, b: B, c: C,
@@ -35,7 +35,7 @@ fn simple_graph() {
 fn topological_sort() {
     declare_tags!(A, B, C, D, E, F);
 
-    let mut g = Graph::<Regular, Regular>::new();
+    let mut g = PlainGraph::new();
     add_nodes!(
         g,
         a: A, b: B, c: C,
@@ -63,7 +63,7 @@ fn topological_sort() {
 fn disjoint_sets() {
     declare_tags!(A, B, X, Y);
 
-    let mut g = Graph::<Regular, Regular>::new();
+    let mut g = PlainGraph::new();
     add_nodes!(g,
         a: A, b: B,
         x: X, y: Y
@@ -96,7 +96,7 @@ fn disjoint_sets() {
 fn cyclic_graph_returns_err() {
     declare_tags!(A, B, C);
 
-    let mut g = Graph::<Regular, Regular>::new();
+    let mut g = PlainGraph::new();
 
     add_nodes!(g, a: A, b: B, c: C);
 
@@ -112,10 +112,10 @@ fn cyclic_graph_returns_err() {
 fn empty_and_single_node() {
     declare_tags!(A);
 
-    let empty_g = Graph::<Regular, Regular>::new();
+    let empty_g = PlainGraph::new();
     assert_eq!(empty_g.sort_ordered().unwrap(), vec![]);
 
-    let mut single_g = Graph::<Regular, Regular>::new();
+    let mut single_g = PlainGraph::new();
     add_nodes!(single_g, a: A);
 
     let sorted = single_g.sort_ordered().unwrap();
@@ -127,7 +127,7 @@ fn empty_and_single_node() {
 fn diamond_dependency() {
     declare_tags!(A, B, C, D);
 
-    let mut g = Graph::<Regular, Regular>::new();
+    let mut g = PlainGraph::new();
     add_nodes!(g, a: A, b: B, c: C, d: D);
 
     g.add_edge(a, b);
@@ -154,12 +154,12 @@ fn diamond_dependency() {
 /// G: (a | b) -> c
 /// H: x -> y
 #[test]
-fn merge_into_parallel_set() {
+fn merge_at_fork_group() {
     declare_tags!(A, B, C);
     declare_tags!(X, Y);
 
     // (a | b) -> c
-    let mut g = Graph::<Parallel, Regular>::new();
+    let mut g = Graph::<Fork, Single>::new();
     add_nodes! {
           g,
           a: A, b: B, c: C,
@@ -168,7 +168,7 @@ fn merge_into_parallel_set() {
     g.add_edge(b, c);
 
     // x -> y
-    let mut h = Graph::<Regular, Regular>::new();
+    let mut h = PlainGraph::new();
     add_nodes!(h, x: X, y: Y);
     h.add_edge(x, y);
 

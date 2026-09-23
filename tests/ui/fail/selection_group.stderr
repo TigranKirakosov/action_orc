@@ -1,4 +1,4 @@
-error: Graph Error: A Selection Group member cannot be a Parallel Group.
+error: Graph Error: A Selection group member can't be a Fork group.
   --> tests/ui/fail/selection_group.rs:10:19
    |
 10 | #[graph(X -> (A ? (B | C)) -> Y)]

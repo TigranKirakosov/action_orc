@@ -11,9 +11,9 @@ impl<T: 'static> Marker for T {}
 /// Node's role when it is up a stream from nodes located down a stream
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum UpstreamRole {
-    /// A regular node
+    /// A plain node
     #[default]
-    Regular,
+    Plain,
 
     /// A node acting as a choice gate (`pivot -> (A : B)`)\
     /// Its downstream neighbors are mutually exclusive choices
@@ -23,15 +23,15 @@ pub enum UpstreamRole {
 /// Node's role when it is down a stream from nodes located up a stream
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Hash)]
 pub enum DownstreamRole {
-    /// A regular node
+    /// A plain node
     #[default]
-    Regular,
+    Plain,
 
     /// A member of a selection group (A ? B)
-    SelectionBranch,
+    SelectionMember,
 
-    /// A member of a parallel group (A | B)
-    ParallelBranch,
+    /// A member of a fork group (A | B)
+    ForkMember,
 }
 
 #[derive(Clone)]
@@ -46,8 +46,8 @@ pub struct Meta {
 impl Meta {
     pub fn of<T: Marker>() -> Self {
         Self {
-            role_us: UpstreamRole::Regular,
-            role_ds: DownstreamRole::Regular,
+            role_us: UpstreamRole::Plain,
+            role_ds: DownstreamRole::Plain,
             type_id: TypeId::of::<T>(),
             #[cfg(any(test, feature = "visualizer"))]
             type_name: {
