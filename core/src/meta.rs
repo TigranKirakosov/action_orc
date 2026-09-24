@@ -51,7 +51,7 @@ impl Meta {
             type_id: TypeId::of::<T>(),
             #[cfg(any(test, feature = "visualizer"))]
             type_name: {
-                use crate::get_type_name;
+                use crate::utils::get_type_name;
                 get_type_name::<T>()
             },
         }

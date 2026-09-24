@@ -62,7 +62,7 @@ impl From<CodegenError> for syn::Error {
             CodegenError::InvalidSelectorBound { span } => syn::Error::new(
                 span,
                 "Graph Error: A Selector annotated with a Fork exit is forbidden.\n\
-                It must have a Single exit.",
+                It must have a Join exit.",
             ),
             CodegenError::Syn(syn_err) => syn_err,
         }

@@ -29,7 +29,7 @@ Can be devided on bound and unbound by context.
     ```rust
     orc!(@[Fork] both_fork);
     // or
-    orc!(@[Single; Fork] single_fork);
+    orc!(@[Join; Fork] join_fork);
     ```
 
 ## Group Bound

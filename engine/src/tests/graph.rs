@@ -127,3 +127,76 @@ fn standalone_embedding_macro() -> Result {
 
     Ok(())
 }
+
+#[test]
+fn composite_bounds_inference() -> Result {
+    declare_tags!(A, B, C, D, X, Y);
+    fn _assert_join_join<I: Entry, O: Exit>(_: &Graph<I, O>) {}
+    fn _assert_fork_fork<I: GroupEntry, O: GroupExit>(_: &Graph<I, O>) {}
+    fn _assert_join_fork<I: Entry, O: GroupExit>(_: &Graph<I, O>) {}
+    fn _assert_fork_join<I: GroupEntry, O: Exit>(_: &Graph<I, O>) {}
+
+    let g = orc!(
+        a: A -> B;
+        [a] -> C;
+    );
+    _assert_join_fork(&g);
+
+    let g = orc!(
+        A -> b: B;
+        C -> [b];
+    );
+    _assert_fork_join(&g);
+
+    let g = orc!(
+        x: X; y: Y;
+        [y] -> [x];
+        [y] -> [x];
+    );
+    _assert_join_join(&g);
+
+    let g = orc!(
+        X;
+    );
+    _assert_join_join(&g);
+
+    let g = orc!(
+        _a: A; _b: B;
+        _x: X; _y: Y;
+    );
+    _assert_fork_fork(&g);
+
+    let g = orc!(
+        X; Y;
+    );
+    _assert_fork_fork(&g);
+
+    let g = orc!(
+        X;
+        Y;
+    );
+    _assert_fork_fork(&g);
+
+    let g = orc!(
+        A -> B;
+        X -> Y;
+    );
+    _assert_fork_fork(&g);
+
+    let g = orc!(
+        a: A -> B -> d: D;
+        [a] -> C -> [d];
+    );
+    _assert_join_join(&g);
+
+    let g = orc!(
+        a: A; b: B;
+        c: C; d: D;
+
+        [a] -> [b] -> [d];
+        [a] -> [c] -> [d];
+    );
+    _assert_join_join(&g);
+
+    Ok(())
+}

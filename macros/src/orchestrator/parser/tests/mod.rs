@@ -76,7 +76,7 @@ fn selection_group_syntax() {
 
 #[test]
 fn bound_annotation_syntax() {
-    let tokens = tokenize("@[Fork; Single] fork_single;");
+    let tokens = tokenize("@[Fork; Join] fork_join;");
     let ast = parse(tokens).unwrap();
     insta::assert_debug_snapshot!(ast);
 }

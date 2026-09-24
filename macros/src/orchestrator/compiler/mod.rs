@@ -1,6 +1,3 @@
-use action_orc_core::DownstreamRole;
-#[allow(unused)]
-use action_orc_core::{Graph as OrcGraph, GraphError as OrcGraphError};
 use proc_macro::TokenStream;
 use proc_macro2::{Span, TokenStream as TokenStream2};
 use quote::{format_ident, quote, quote_spanned};
@@ -16,6 +13,7 @@ use super::{
 
 use compile_graph::CompileGraph;
 
+mod bounds_inference;
 mod compile_graph;
 mod declaration;
 mod embedding;
@@ -49,11 +47,10 @@ pub(super) fn generate(ast: SyntaxTree) -> TokenStream {
     let mut cx = Context::default();
 
     for graph in &ast.graphs {
-        cx.compile_graph.note_new_line_entry();
         let _ = cx.process_graph(graph);
     }
 
-    let (input_bound, output_bound) = cx.compile_graph.evaluate_graph_bounds();
+    let (input_bound, output_bound) = bounds_inference::infer_graph_bounds(&ast);
 
     let Context {
         decls,
@@ -74,7 +71,7 @@ pub(super) fn generate(ast: SyntaxTree) -> TokenStream {
 
     let out_stream = quote! {
         {
-            let mut builder = GraphBuilder::new();
+            let mut builder = action_orc::GraphBuilder::new();
             #(#decls)*
             #(#links)*
             #(#compile_errors)*

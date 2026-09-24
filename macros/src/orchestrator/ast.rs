@@ -30,7 +30,7 @@ pub(super) enum NodeExpr {
     Binding(Ident),
 
     /// Any expression that results in a graph-like value (embedding via `@`).
-    /// Optionally carries explicit I/O bound annotations like `@[Fork; Single] expr`.
+    /// Optionally carries explicit I/O bound annotations like `@[Fork; Join] expr`.
     Expression {
         expr: Expr,
         explicit_bounds: Option<(Bound, Bound)>,
@@ -67,7 +67,7 @@ pub(super) enum SchedulingMode {
 
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]
 pub enum Bound {
-    Single,
+    Join,
     Fork,
     Ambiguous,
 }
@@ -75,9 +75,9 @@ pub enum Bound {
 impl ToTokens for Bound {
     fn to_tokens(&self, tokens: &mut proc_macro2::TokenStream) {
         let ts = match self {
-            Bound::Single => quote! { Single },
-            Bound::Fork => quote! { Fork },
-            Bound::Ambiguous => quote! { Ambiguous },
+            Bound::Join => quote! { action_orc::Join },
+            Bound::Fork => quote! { action_orc::Fork },
+            Bound::Ambiguous => quote! { action_orc::Ambiguous },
         };
         tokens.extend(ts);
     }

@@ -65,7 +65,7 @@ impl<I: Bound, O: Bound> Graph<I, O> {
 
     /// Merges sub-[Graph] into this [Graph] returning shifted sub [GraphBounds]
     ///
-    /// ### Single entry
+    /// ### Join entry
     /// Merging sub-graph **H** (`x -> y`) into graph **G** (`a -> b`) at **G**(`a`):
     /// ```text
     /// [a] ──> [x] ──> [y] ──> [b]

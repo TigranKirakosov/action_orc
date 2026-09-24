@@ -2,10 +2,10 @@ use super::{ast::*, *};
 
 impl Context {
     /// Checks two types of embeddings:
-    /// - **A**: Single variable: `... -> @some_sub_graph -> ...`
+    /// - **A**: Join variable: `... -> @some_sub_graph -> ...`
     /// - **B**: Complex expression: `@Race{ a: x, b: y }`
     ///
-    /// `explicit_bounds` comes from the `@[Fork; Single]` annotation syntax.
+    /// `explicit_bounds` comes from the `@[Fork; Join]` annotation syntax.
     ///
     /// Embedding is considered an anonymous entry in a codegen context.
     pub(super) fn process_embedding(
@@ -31,7 +31,7 @@ impl Context {
                 self.embedding_expr
                     .insert(bounds_ident.clone(), quote!(#embedding));
 
-                // When explicit bounds are present (e.g. `@[Single] amb`), the annotation
+                // When explicit bounds are present (e.g. `@[Join] amb`), the annotation
                 // overrides the expression's native bound, so rule-site trait assertions
                 // are skipped and the declared bounds are validated directly by codegen
                 if let Some(bounds) = explicit_bounds {

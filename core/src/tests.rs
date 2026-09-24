@@ -1,4 +1,4 @@
-use crate::*;
+use crate::{utils::get_type_name, *};
 
 #[test]
 fn simple_graph() {
@@ -159,7 +159,7 @@ fn merge_at_fork_group() {
     declare_tags!(X, Y);
 
     // (a | b) -> c
-    let mut g = Graph::<Fork, Single>::new();
+    let mut g = Graph::<Fork, Join>::new();
     add_nodes! {
           g,
           a: A, b: B, c: C,

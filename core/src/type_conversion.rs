@@ -14,9 +14,8 @@
 //! the compiler falls back to [AsNodeBounds] (one auto-deref away), which
 //! creates a leaf node.
 
+use crate::*;
 use std::marker::PhantomData;
-
-use super::{GraphBounds, GraphBuilder, IntoGraphLayout, IsSubGraph, Marker};
 
 pub struct Tag<T>(pub PhantomData<T>);
 

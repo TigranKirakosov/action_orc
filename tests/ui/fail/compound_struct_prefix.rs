@@ -7,8 +7,8 @@ struct C;
 
 #[graph(R -> (@a | @b))]
 struct Race<'a> {
-    a: &'a Graph<Single, Single>,
-    b: &'a Graph<Single, Single>,
+    a: &'a Graph<Join, Join>,
+    b: &'a Graph<Join, Join>,
 }
 
 // Compound expression `Race { a: x, b: y }` without the '@' prefix is invalid:
@@ -16,8 +16,8 @@ struct Race<'a> {
 // - inline compound forms must be `@`-prefixed
 #[graph(Race { a: x, b: y } -> C)]
 struct EmbeddedRace<'a> {
-    x: &'a Graph<Single, Single>,
-    y: &'a Graph<Single, Single>,
+    x: &'a Graph<Join, Join>,
+    y: &'a Graph<Join, Join>,
 }
 
 fn main() {

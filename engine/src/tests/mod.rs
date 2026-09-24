@@ -4,7 +4,7 @@ use std::{
     sync::{Arc, Mutex},
 };
 
-use action_orc_core::*;
+use action_orc_core::{internals::*, *};
 use action_orc_macros::*;
 use test_macros::*;
 
@@ -13,6 +13,11 @@ use crate::*;
 mod graph;
 mod orchestrator;
 mod reactor;
+
+/// Emulates user type facade
+mod action_orc {
+    pub use action_orc_core::*;
+}
 
 mod cmd {
     use super::*;

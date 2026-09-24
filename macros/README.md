@@ -22,8 +22,8 @@ Structs with fields must declare them manually (with their own lifetime and type
 ```rust
 #[graph(R -> (@a | @b))]
 struct Race<'a> {
-    a: &'a Graph<Single, Single>,
-    b: &'a Graph<Single, Single>,
+    a: &'a Graph<Join, Join>,
+    b: &'a Graph<Join, Join>,
 }
 ```
 

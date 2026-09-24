@@ -1,4 +1,8 @@
-use crate::{Graph, Meta, NodeId, bound::Bound};
+use crate::{
+    bound::Bound,
+    graph::{Graph, NodeId},
+    meta::Meta,
+};
 
 /// Object-safe, immutable flat graph layout.
 ///

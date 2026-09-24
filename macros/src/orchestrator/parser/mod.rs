@@ -112,7 +112,7 @@ fn binding<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<
 
 fn expr_block<'a>(input: &mut &'a [TokenTree]) -> ModalResult<NodeExpr, ParseError<'a>> {
     punct('@').parse_next(input)?;
-    // Optional bound annotation: `[Fork; Single]` or `[Fork]`
+    // Optional bound annotation: `[Fork; Join]` or `[Fork]`
     let explicit_bounds = opt(enclosed(
         Delimiter::Bracket,
         |input| {
@@ -141,9 +141,9 @@ fn bound<'a>(input: &mut &'a [TokenTree]) -> ModalResult<Bound, ParseError<'a>> 
             *input = &input[1..];
             Ok(Bound::Fork)
         }
-        Some(TokenTree::Ident(id)) if id == "Single" => {
+        Some(TokenTree::Ident(id)) if id == "Join" => {
             *input = &input[1..];
-            Ok(Bound::Single)
+            Ok(Bound::Join)
         }
         _ => {
             input.reset(&checkpoint);

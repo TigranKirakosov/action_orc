@@ -1,7 +1,7 @@
 error: unused variable: `x`
   --> tests/ui/fail/compound_struct_prefix.rs:19:5
    |
-19 |     x: &'a Graph<Single, Single>,
+19 |     x: &'a Graph<Join, Join>,
    |     ^ help: try ignoring the field: `x: _`
    |
 note: the lint level is defined here
@@ -14,5 +14,5 @@ note: the lint level is defined here
 error: unused variable: `y`
   --> tests/ui/fail/compound_struct_prefix.rs:20:5
    |
-20 |     y: &'a Graph<Single, Single>,
+20 |     y: &'a Graph<Join, Join>,
    |     ^ help: try ignoring the field: `y: _`

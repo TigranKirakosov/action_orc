@@ -14,7 +14,7 @@ SyntaxTree {
                         segments: [
                             PathSegment {
                                 ident: Ident(
-                                    fork_single,
+                                    fork_join,
                                 ),
                                 arguments: PathArguments::None,
                             },
@@ -24,7 +24,7 @@ SyntaxTree {
                 explicit_bounds: Some(
                     (
                         Fork,
-                        Single,
+                        Join,
                     ),
                 ),
             },

@@ -60,7 +60,7 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
 
     let is_subgraph_impl = if is_unit {
         quote! {
-            impl IsSubGraph for #name {}
+            impl action_orc::IsSubGraph for #name {}
         }
     } else {
         quote! {}
@@ -71,8 +71,8 @@ pub fn attr_macro(attr: TokenStream, item: TokenStream) -> TokenStream {
 
         #is_subgraph_impl
 
-        impl #final_impl_generics IntoGraphLayout<'a> for #name #final_ty_generics #where_clause {
-            fn into_graph_layout(self) -> Box<dyn GraphLayout + 'a> {
+        impl #final_impl_generics action_orc::IntoGraphLayout<'a> for #name #final_ty_generics #where_clause {
+            fn into_graph_layout(self) -> Box<dyn action_orc::GraphLayout + 'a> {
                 #destructure
 
                 let compiled_graph = orc! {

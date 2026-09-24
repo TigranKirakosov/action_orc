@@ -11,15 +11,15 @@ When an **embedded graph** sits at the entry or exit boundary of the outer graph
 ## Ambiguity cases
 
 ```rust
-let forky: Graph<Fork, Single> = orc!((X | Y) -> Z);
+let forky: Graph<Fork, Join> = orc!((X | Y) -> Z);
 
-let sinky: Graph<Single, Single> = orc!(A -> B);
+let sinky: Graph<Join, Join> = orc!(A -> B);
 
 // Entry edge - `@forky` is opaque to graph, compiler stamps `Ambiguous` at entry bound:
-let graph: Graph<Ambiguous, Single> = orc!(@forky -> C);
+let graph: Graph<Ambiguous, Join> = orc!(@forky -> C);
 
 // Exit edge - `@sinky` is opaque to graph aswell, `Ambiguous` is stamped at the exit bound:
-let graph: Graph<Single, Ambiguous> = orc!(A -> @sinky -> @forky);
+let graph: Graph<Join, Ambiguous> = orc!(A -> @sinky -> @forky);
 
 // Both edges:
 let graph: Graph<Ambiguous, Ambiguous> = orc!(@forky -> A -> @sinky);
@@ -28,14 +28,14 @@ let graph: Graph<Ambiguous, Ambiguous> = orc!(@forky -> A -> @sinky);
 ## Disambiguation via annotations
 
 ```rust
-let graph: Graph<Fork, Single> = orc!(@[Fork; Single] forky -> C);
+let graph: Graph<Fork, Join> = orc!(@[Fork; Join] forky -> C);
 //                                          ^^^^^^^^^^^^^^ - hint compiler with forky's bound types
 
-let graph: Graph<Single, Single> = orc!(A -> @sinky -> @[Fork; Single] forky);
+let graph: Graph<Join, Join> = orc!(A -> @sinky -> @[Fork; Join] forky);
 //                                          ^^^^^^^ - annotation is unnecessary here
 
 // Both edges:
-let graph: Graph<Fork, Single> = orc!(@[Fork; Single] forky -> A -> @[Single; Single] sinky);
+let graph: Graph<Fork, Join> = orc!(@[Fork; Join] forky -> A -> @[Join; Join] sinky);
 
 ```
 
@@ -60,14 +60,14 @@ and without user annotations their bounds default to `Ambiguous`.
 
 **Runtime is unaffected.** The `I`/`O` type parameters on `Graph<I, O>`
 are phantom, they're never checked against the actual graph structure.
-`GraphBuilder::build::<Single, Single>()` succeeds even with 10 sources and 20 sinks.
+`GraphBuilder::build::<Join, Join>()` succeeds even with 10 sources and 20 sinks.
 The runtime engine (`Schedule`, `Reactor`, `Orchestrator`) works correctly regardless of what `I`/`O` is stamped on the `Graph`.
 
 It only matters when consumer code dispatches on the `Graph<I, O>` type:
 
 ```rust
-fn run_parallel(engine: &Graph<Fork, Single>) { /* ... */ }
+fn run_parallel(engine: &Graph<Fork, Join>) { /* ... */ }
 
-let g = orc!(@forky -> C); // inferred as Graph<Ambiguous, Single>
+let g = orc!(@forky -> C); // inferred as Graph<Ambiguous, Join>
 run_parallel(&g);          // compile error: Ambiguous != Fork
 ```

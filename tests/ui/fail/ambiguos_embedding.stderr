@@ -1,14 +1,14 @@
-error[E0277]: the trait bound `action_orc::Ambiguous: action_orc::Entry` is not satisfied
+error[E0277]: the trait bound `Ambiguous: action_orc::Entry` is not satisfied
   --> tests/ui/fail/ambiguos_embedding.rs:22:16
    |
 22 |     let _err = orc!(A -> (@amb ? C));
-   |                ^^^^^^^^^^^^^^^^^^^^^ the trait `action_orc::Entry` is not implemented for `action_orc::Ambiguous`
+   |                ^^^^^^^^^^^^^^^^^^^^^ the trait `action_orc::Entry` is not implemented for `Ambiguous`
    |
-help: the trait `action_orc::Entry` is implemented for `action_orc::Single`
+help: the trait `action_orc::Entry` is implemented for `action_orc::Join`
   --> core/src/bound.rs
    |
-   | impl Entry for Single {}
-   | ^^^^^^^^^^^^^^^^^^^^^
+   | impl Entry for Join {}
+   | ^^^^^^^^^^^^^^^^^^^
 note: required by a bound in `main::_assert_single_entry`
   --> tests/ui/fail/ambiguos_embedding.rs:22:16
    |

@@ -35,8 +35,8 @@ impl Context {
                     IdFactory::aggregate_group_bounds(group_id);
 
                 self.links.push(quote! {
-                    let #aggregated_source = GraphBounds { sources: #group_source, sinks: vec![] };
-                    let #aggregated_sink = GraphBounds { sources: vec![], sinks: #group_sink };
+                    let #aggregated_source = action_orc::GraphBounds { sources: #group_source, sinks: vec![] };
+                    let #aggregated_sink = action_orc::GraphBounds { sources: vec![], sinks: #group_sink };
                 });
 
                 let source_node_id = self.compile_graph.add_synthetic_node();
@@ -111,7 +111,7 @@ impl Context {
             SchedulingMode::Fork => {
                 self.links.push(quote! {
                     for source_id in &#sub_source.sources {
-                        builder.set_downstream_role(source_id, DownstreamRole::ForkMember);
+                        builder.set_downstream_role(source_id, action_orc::DownstreamRole::ForkMember);
                     }
                 });
 
@@ -121,7 +121,7 @@ impl Context {
             SchedulingMode::Selection => {
                 self.links.push(quote! {
                     for source_id in &#sub_source.sources {
-                        builder.set_downstream_role(source_id, DownstreamRole::SelectionMember);
+                        builder.set_downstream_role(source_id, action_orc::DownstreamRole::SelectionMember);
                     }
                 });
 

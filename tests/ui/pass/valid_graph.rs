@@ -9,8 +9,8 @@ struct L;
 // Parametrized graph: fields declare the sub-graphs referenced after `@`.
 #[graph( R -> (@a | @b) )]
 struct Race<'a> {
-    a: &'a Graph<Single, Single>,
-    b: &'a Graph<Single, Single>,
+    a: &'a Graph<Join, Join>,
+    b: &'a Graph<Join, Join>,
 }
 
 // Unit graph: a #[graph]-decorated unit struct may be embedded without `@`.
@@ -24,8 +24,8 @@ struct EmbedVariantOne;
 // Embed compound graph strictly with '@' prefix and struct expression.
 #[graph( @Race { a: x, b: y } -> C )]
 struct EmbedVariantThree<'a> {
-    x: &'a Graph<Single, Single>,
-    y: &'a Graph<Single, Single>,
+    x: &'a Graph<Join, Join>,
+    y: &'a Graph<Join, Join>,
 }
 
 fn main() {

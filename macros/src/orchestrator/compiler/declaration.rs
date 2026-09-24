@@ -36,7 +36,7 @@ impl Context {
         });
 
         let decl = quote! {
-            let #bounds_ident = (&&Tag::<#typ>(std::marker::PhantomData))
+            let #bounds_ident = (&&action_orc::Tag::<#typ>(std::marker::PhantomData))
                 .resolve(&mut builder);
         };
         self.decls.push(decl);

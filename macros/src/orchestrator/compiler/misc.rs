@@ -1,6 +1,6 @@
-use syn::Ident;
-
 use super::{ast::*, *};
+use action_orc_core::{DownstreamRole, GraphError};
+use syn::Ident;
 
 impl Context {
     pub(super) fn process_node(&mut self, node: &NodeExpr) -> (Source, Sink) {
@@ -16,7 +16,6 @@ impl Context {
     }
 
     fn process_binding(&mut self, binding: &Ident) -> (Source, Sink) {
-        self.compile_graph.note_binding();
         (Source(binding.clone()), Sink(binding.clone()))
     }
 
@@ -42,7 +41,7 @@ impl Context {
             self.errors.push(CodegenError::ForkGroupSelector { span });
         }
 
-        if let Err(OrcGraphError::CycleDetected) = self.compile_graph.sort_ordered() {
+        if let Err(GraphError::CycleDetected) = self.compile_graph.sort_ordered() {
             let from_name = self
                 .anon_map
                 .get(from)
