@@ -17,16 +17,8 @@ A declarative DSL for composing hierarchical execution graphs in Rust.
 ## Planned Integrations
 - [ ] [Bevy plugin](TODO: put link to plugin crate)
 
-## Syntax Overview
+## Rough Example
 > Declare your battle formations with the `orc!` macro, and let the Warchief lead the horde to victory!
-
-- Declare nodes: bind handles (`node: Marker`) or match anonymously (`Marker`)
-- Map dependencies: `lhs -> rhs` (i.e., **lhs** blocks **rhs**)
-- Bind already declared nodes: `[b] -> y`
-- Compose graphs: dynamically embed sub-graphs (`A -> sub -> B`)
-- Group nodes into ordered *Sequences* or *Fork* branches:
-    - Sequence block: `(a, b, c)`
-    - Fork block: `(x | y | z)`
 
 ```rust
 use action_orc::*;

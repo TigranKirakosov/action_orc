@@ -9,7 +9,7 @@ fn orchestrator_schedule_loop() -> Result {
 
     let mut orchestrator = Orchestrator::new(
         Graph,
-        Config {
+        OrcConfig {
             loop_schedule: true,
         },
     )?;
@@ -93,7 +93,7 @@ fn orchestrator_topological_correctness() -> Result {
 
     let mut orchestrator = Orchestrator::new(
         Graph,
-        Config {
+        OrcConfig {
             loop_schedule: true,
         },
     )?;
@@ -201,7 +201,7 @@ fn orchestrator_multiple_sources() -> Result {
 
     let mut orchestrator = Orchestrator::new(
         ForkSourcesGraph,
-        Config {
+        OrcConfig {
             loop_schedule: false,
         },
     )?;
@@ -231,7 +231,7 @@ fn orchestrator_no_loop_termination() -> Result {
 
     let mut orchestrator = Orchestrator::new(
         Graph,
-        Config {
+        OrcConfig {
             loop_schedule: false,
         },
     )?;

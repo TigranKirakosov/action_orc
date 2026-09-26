@@ -22,11 +22,11 @@ impl Listener for EventQueue {
     }
 }
 
-pub struct Config {
+pub struct OrcConfig {
     pub loop_schedule: bool,
 }
 
-impl Default for Config {
+impl Default for OrcConfig {
     fn default() -> Self {
         Self {
             loop_schedule: false,
@@ -50,7 +50,7 @@ pub struct Orchestrator {
     pub(crate) reactor: Reactor,
     event_queue: EventQueue,
     commands_channel: CommandsChannel,
-    config: Config,
+    config: OrcConfig,
     /// Indicates count of currently processing events by outside world
     in_flight: usize,
 }
@@ -58,7 +58,7 @@ pub struct Orchestrator {
 impl Orchestrator {
     pub fn new<G: IntoGraphLayout<'static>>(
         graph: G,
-        config: Config,
+        config: OrcConfig,
     ) -> Result<Self, ReactorError> {
         let commands_channel = CommandsChannel::new();
         let event_queue = EventQueue::default();
@@ -149,7 +149,7 @@ impl Orchestrator {
         elements
     }
 
-    pub fn config_schedule_mut(&mut self) -> &mut Config {
+    pub fn config_schedule_mut(&mut self) -> &mut OrcConfig {
         &mut self.config
     }
 
